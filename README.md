@@ -77,7 +77,7 @@ agol-webmap-bridge WEBMAP_GUID --geonode-url GEONODE_URL [OPTIONS]
 
 ```bash
 agol-webmap-bridge 8a9a419b704e4e03bb98d9f14226a743 \
-  --geonode-url https://hhr.bertha.geodan.nl \
+  --geonode-url https://your-geonode.example.com \
   --output-dir output \
   --match-threshold 0.6
 ```
@@ -85,7 +85,7 @@ agol-webmap-bridge 8a9a419b704e4e03bb98d9f14226a743 \
 This will:
 
 1. Fetch the webmap at `https://www.arcgis.com/sharing/rest/content/items/8a9a419b704e4e03bb98d9f14226a743/data`
-2. Fetch all datasets from `https://hhr.bertha.geodan.nl/api/v2/datasets/`
+2. Fetch all datasets from `https://your-geonode.example.com/api/v2/datasets/`
 3. Match layers by name and write the result to `output/<webmap-title>_geonode.json`
 
 ---
