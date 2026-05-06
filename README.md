@@ -1,1 +1,227 @@
 # agol-webmap-bridge
+
+A Python CLI tool that converts an **ArcGIS Online (AGOL) webmap** configuration into a
+**GeoNode Map JSON** file.  The tool fetches the webmap definition from the AGOL REST API,
+retrieves all available datasets from a GeoNode instance, matches operational layers by name,
+and writes the resulting GeoNode Map JSON to disk.
+
+The converter is built on a pluggable writer abstraction so that support for additional output
+formats (QGIS project, Mapbox GL JSON, …) can be added with minimal effort in the future.
+
+---
+
+## Table of contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [CLI options](#cli-options)
+- [Supported AGOL webmap properties](#supported-agol-webmap-properties)
+- [Unsupported / future properties](#unsupported--future-properties)
+- [How to POST the result to GeoNode](#how-to-post-the-result-to-geonode)
+- [Extending with a new writer](#extending-with-a-new-writer)
+- [Running the tests](#running-the-tests)
+- [Possible future extensions](#possible-future-extensions)
+
+---
+
+## Features
+
+- Fetches an AGOL webmap by item GUID via the public REST API.
+- Paginates the GeoNode `/api/v2/datasets/` endpoint to retrieve all available datasets.
+- Matches each AGOL operational layer to the most suitable GeoNode dataset using
+  fuzzy name comparison (`difflib.SequenceMatcher`).  Unmatched layers are skipped
+  with a warning log message.
+- Produces a GeoNode-compatible Map JSON file that can be directly POSTed to the
+  GeoNode Maps API.
+- Meaningful output filename derived from the webmap title (slugified).
+- Prompts before overwriting an existing output file; `--force` skips the prompt.
+- Configurable output directory and matching threshold.
+- Pluggable `BaseWriter` abstraction for adding new output formats.
+
+---
+
+## Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/bertt/agol-webmap-bridge.git
+cd agol-webmap-bridge
+
+# Create and activate a virtual environment (recommended)
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# macOS / Linux
+source .venv/bin/activate
+
+# Install the package
+pip install -e .
+```
+
+For development (includes `pytest` and `requests-mock`):
+
+```bash
+pip install -e ".[dev]"
+```
+
+---
+
+## Usage
+
+```bash
+agol-webmap-bridge WEBMAP_GUID --geonode-url GEONODE_URL [OPTIONS]
+```
+
+**Example:**
+
+```bash
+agol-webmap-bridge 8a9a419b704e4e03bb98d9f14226a743 \
+  --geonode-url https://hhr.bertha.geodan.nl \
+  --output-dir output \
+  --match-threshold 0.6
+```
+
+This will:
+
+1. Fetch the webmap at `https://www.arcgis.com/sharing/rest/content/items/8a9a419b704e4e03bb98d9f14226a743/data`
+2. Fetch all datasets from `https://hhr.bertha.geodan.nl/api/v2/datasets/`
+3. Match layers by name and write the result to `output/<webmap-title>_geonode.json`
+
+---
+
+## CLI options
+
+| Option | Short | Default | Description |
+|---|---|---|---|
+| `WEBMAP_GUID` | — | *(required)* | AGOL item GUID of the webmap |
+| `--geonode-url` | `-g` | *(required)* | Base URL of the GeoNode instance |
+| `--output-dir` | `-o` | `output` | Directory to write the output JSON file |
+| `--force` | `-f` | off | Overwrite existing output without prompting |
+| `--match-threshold` | — | `0.6` | Min similarity ratio (0–1) for layer matching |
+| `--log-level` | — | `INFO` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `-h` / `--help` | — | — | Show help message |
+
+---
+
+## Supported AGOL webmap properties
+
+| AGOL property | Maps to GeoNode field | Notes |
+|---|---|---|
+| `title` (item metadata) | `title` | Passed via `--webmap-title` or taken from the webmap JSON |
+| `operationalLayers[].title` | `maplayers[].dataset.title` | Matched fuzzy to GeoNode dataset name |
+| `operationalLayers[].opacity` | `maplayers[].opacity` | 0–1 float preserved |
+| `operationalLayers[].visibility` | `maplayers[].visibility` | Boolean preserved |
+| `initialState.viewpoint.targetGeometry` | `extent` | `[xmin, ymin, xmax, ymax]` |
+| `spatialReference.wkid` / `latestWkid` | `srid` | Converted to `EPSG:<code>` string |
+| `baseMap.title` | `abstract` | Stored as `"Basemap: …"` in abstract field |
+| Group layers (`GroupLayer`) | — | Sub-layers are flattened and matched individually |
+
+---
+
+## Unsupported / future properties
+
+The following AGOL webmap features are **not yet converted**.  They are ignored silently
+or noted in comments.  Contributions or later phases may add support for them.
+
+| AGOL feature | Status |
+|---|---|
+| Basemap layer references | Not converted; title stored in abstract only |
+| Renderer / symbology (JSON) | Not converted |
+| Popup configuration (`popupInfo`) | Not converted |
+| Field configurations | Not converted |
+| Bookmarks | Not converted |
+| Non-spatial tables (`tables[]`) | Not converted |
+| Time-aware layer settings | Not converted |
+| Nested group layers (> 1 level) | Only one level of flattening applied |
+| `mapFloorInfo` / indoor positioning | Not converted |
+| Private/secured AGOL webmaps (token auth) | Not supported |
+
+---
+
+## How to POST the result to GeoNode
+
+The output JSON file is ready to be POSTed to the GeoNode Maps API.
+
+**Using curl:**
+
+```bash
+curl -X POST https://your-geonode/api/v2/maps/ \
+  -H "Authorization: Bearer <your-token>" \
+  -H "Content-Type: application/json" \
+  -d @output/my_webmap_geonode.json
+```
+
+**Using Python (`requests`):**
+
+```python
+import json
+import requests
+
+with open("output/my_webmap_geonode.json") as f:
+    map_json = json.load(f)
+
+response = requests.post(
+    "https://your-geonode/api/v2/maps/",
+    headers={
+        "Authorization": "Bearer <your-token>",
+        "Content-Type": "application/json",
+    },
+    json=map_json,
+)
+response.raise_for_status()
+print("Created map:", response.json())
+```
+
+You can obtain an API token from your GeoNode instance at `/api/v2/auth-token/` using Basic Auth.
+
+---
+
+## Extending with a new writer
+
+To add a new output format, subclass `BaseWriter`:
+
+```python
+# agol_webmap_bridge/writers/my_custom_writer.py
+from pathlib import Path
+from agol_webmap_bridge.writers.base_writer import BaseWriter
+
+class MyCustomWriter(BaseWriter):
+    def write(self, map_config: dict, path: Path) -> None:
+        # map_config keys: title, abstract, srid, extent, layers[]
+        # Each layer: { geonode_dataset, opacity, visibility }
+        ...
+```
+
+Then pass it to `convert()`:
+
+```python
+from agol_webmap_bridge.converter import convert
+from my_custom_writer import MyCustomWriter
+
+map_config = convert(agol_webmap, geonode_datasets, writer=MyCustomWriter(), threshold=0.6)
+```
+
+---
+
+## Running the tests
+
+```bash
+pip install -e ".[dev]"
+pytest tests/ -v
+```
+
+All tests use mocked HTTP responses via `requests-mock`; no network access is required.
+
+---
+
+## Possible future extensions
+
+- **Direct GeoNode upload** (`--upload` flag): POST the generated JSON to the GeoNode API automatically.
+- **Authenticated AGOL access**: support private webmaps using an AGOL token (`--agol-token`).
+- **Symbology conversion**: translate AGOL renderer JSON to SLD/GeoServer styles.
+- **QGIS project writer**: write a `.qgs` / `.qgz` project file.
+- **Mapbox GL JSON writer**: produce a Mapbox-compatible style document.
+- **Basemap conversion**: map AGOL basemap IDs to OSM/XYZ tile URLs.
+- **Bookmark conversion**: translate AGOL bookmarks to GeoNode saved extents.
+- **Batch conversion**: accept a list of GUIDs and convert them in one run.

@@ -1,0 +1,55 @@
+{
+  "operationalLayers": [
+    {
+      "id": "Luchtfoto_9940",
+      "opacity": 1,
+      "title": "Luchtfoto (RD)",
+      "url": "https://services.arcgisonline.nl/arcgis/rest/services/Luchtfoto/Luchtfoto/MapServer",
+      "visibility": false,
+      "layerType": "ArcGISTiledMapServiceLayer"
+    },
+    {
+      "id": "Grens_Rijnland_4753",
+      "opacity": 0.49,
+      "title": "Grens Rijnland",
+      "url": "https://example.com/arcgis/rest/services/Gebied/Grens_Rijnland/MapServer/0",
+      "visibility": true,
+      "layerType": "ArcGISFeatureLayer"
+    },
+    {
+      "id": "Woningbouwlocaties_0001",
+      "opacity": 0.8,
+      "title": "Woningbouwlocaties",
+      "url": "https://example.com/arcgis/rest/services/Wonen/Woningbouwlocaties/MapServer/0",
+      "visibility": true,
+      "layerType": "ArcGISFeatureLayer"
+    },
+    {
+      "id": "UnmatchedLayer_9999",
+      "opacity": 1,
+      "title": "Completely Unknown Dataset XYZ",
+      "url": "https://example.com/arcgis/rest/services/Unknown/MapServer/0",
+      "visibility": true,
+      "layerType": "ArcGISFeatureLayer"
+    }
+  ],
+  "baseMap": {
+    "title": "OpenStreetMap",
+    "baseMapLayers": []
+  },
+  "initialState": {
+    "viewpoint": {
+      "targetGeometry": {
+        "xmin": 4.3,
+        "ymin": 52.0,
+        "xmax": 4.9,
+        "ymax": 52.5,
+        "spatialReference": {"wkid": 4326}
+      }
+    }
+  },
+  "spatialReference": {"wkid": 4326, "latestWkid": 4326},
+  "version": "2.27",
+  "authoringApp": "ArcGISMapViewer",
+  "authoringAppVersion": "2024.3"
+}

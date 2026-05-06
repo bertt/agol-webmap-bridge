@@ -1,0 +1,38 @@
+{
+  "links": {"next": null, "previous": null},
+  "total": 3,
+  "page": 1,
+  "page_size": 100,
+  "datasets": [
+    {
+      "pk": "284",
+      "uuid": "213b27e0-3e21-44f3-9f9d-ad800ed03999",
+      "title": "Woningbouwlocaties",
+      "name": "WBP6_Woningbouwlocaties_Woningbouwlocaties",
+      "alternate": "hhr:WBP6_Woningbouwlocaties_Woningbouwlocaties",
+      "subtype": "vector",
+      "resource_type": "dataset",
+      "default_style": {"pk": 226, "name": "Woningbouwlocaties_style_2", "workspace": "hhr"}
+    },
+    {
+      "pk": "285",
+      "uuid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "title": "Grens Rijnland",
+      "name": "Grens_Rijnland_formeel",
+      "alternate": "hhr:Grens_Rijnland_formeel",
+      "subtype": "vector",
+      "resource_type": "dataset",
+      "default_style": {"pk": 110, "name": "Grens_Rijnland_style", "workspace": "hhr"}
+    },
+    {
+      "pk": "286",
+      "uuid": "ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb",
+      "title": "Stad op slappe bodem",
+      "name": "WBP6FABRICationsVisiekaart_Stad_op_slappe_bodem",
+      "alternate": "hhr:WBP6FABRICationsVisiekaart_Stad_op_slappe_bodem",
+      "subtype": "vector",
+      "resource_type": "dataset",
+      "default_style": {"pk": 115, "name": "Stad_op_slappe_bodem_style", "workspace": "hhr"}
+    }
+  ]
+}
