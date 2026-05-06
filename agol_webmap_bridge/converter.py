@@ -12,19 +12,10 @@ logger = logging.getLogger(__name__)
 
 def _wkid_to_epsg(wkid: int | None) -> str:
     """Convert an AGOL WKID to an EPSG string.
-
-    Common mappings are handled explicitly; everything else is returned as
-    ``EPSG:<wkid>`` which is correct for most projected/geographic CRS.
     """
     if wkid is None:
         return "EPSG:4326"
-    known = {
-        102100: "EPSG:3857",
-        102113: "EPSG:3857",
-        4326: "EPSG:4326",
-    }
-    return known.get(wkid, f"EPSG:{wkid}")
-
+    return f"EPSG:{wkid}"
 
 def _extract_extent(agol_webmap: dict) -> list[float] | None:
     """Extract bounding box [xmin, ymin, xmax, ymax] from the webmap initialState."""
