@@ -37,8 +37,12 @@ class GeoNodeWriter(BaseWriter):
         layers = []
         for layer in map_config.get("layers", []):
             ds = layer["geonode_dataset"]
+            extra_params: dict = {}
+            group_title = layer.get("group_title", "")
+            if group_title:
+                extra_params["group"] = group_title
             entry = {
-                "extra_params": {},
+                "extra_params": extra_params,
                 "current_style": (ds.get("default_style") or {}).get("name", ""),
                 "opacity": layer.get("opacity", 1.0),
                 "visibility": layer.get("visibility", True),
@@ -50,12 +54,17 @@ class GeoNodeWriter(BaseWriter):
             }
             layers.append(entry)
 
-        geonode_map = {
+        geonode_map: dict = {
             "title": map_config.get("title", "Untitled"),
             "abstract": map_config.get("abstract", ""),
             "srid": map_config.get("srid", "EPSG:4326"),
             "maplayers": layers,
         }
+
+        # Include groups when present
+        groups = map_config.get("groups", [])
+        if groups:
+            geonode_map["groups"] = groups
 
         # Include extent when available
         extent = map_config.get("extent")

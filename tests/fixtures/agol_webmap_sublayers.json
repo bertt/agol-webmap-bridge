@@ -1,0 +1,41 @@
+{
+  "operationalLayers": [
+    {
+      "id": "Legger_001",
+      "opacity": 0.75,
+      "title": "Legger",
+      "url": "https://example.com/arcgis/rest/services/Leggers/Legger/MapServer",
+      "visibility": true,
+      "layerType": "ArcGISMapServiceLayer",
+      "layers": [
+        {
+          "id": 0,
+          "name": "Regionale kering as",
+          "parentLayerId": -1,
+          "defaultVisibility": true
+        },
+        {
+          "id": 1,
+          "name": "Regionale kering zone",
+          "parentLayerId": -1,
+          "defaultVisibility": true,
+          "subLayerIds": [2, 3]
+        },
+        {
+          "id": 2,
+          "name": "Kernzone",
+          "parentLayerId": 1,
+          "defaultVisibility": true
+        },
+        {
+          "id": 3,
+          "name": "Beschermingszone",
+          "parentLayerId": 1,
+          "defaultVisibility": false
+        }
+      ]
+    }
+  ],
+  "spatialReference": {"wkid": 28992, "latestWkid": 28992},
+  "baseMap": {"title": "Topografische kaart", "baseMapLayers": []}
+}

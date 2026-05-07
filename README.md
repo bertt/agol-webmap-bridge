@@ -116,6 +116,7 @@ This will:
 | `spatialReference.wkid` / `latestWkid` | `srid` | Converted to `EPSG:<code>` string |
 | `baseMap.title` | `abstract` | Stored as `"Basemap: …"` in abstract field |
 | Group layers (`GroupLayer`) | — | Sub-layers are flattened and matched individually |
+| `ArcGISMapServiceLayer` with `layers[]` | `maplayers[]` (flat) | Leaf sublayers are extracted and matched individually; group nodes (`subLayerIds` present) are skipped; opacity/visibility inherited from the service layer |
 
 ---
 
@@ -133,7 +134,8 @@ or noted in comments.  Contributions or later phases may add support for them.
 | Bookmarks | Not converted |
 | Non-spatial tables (`tables[]`) | Not converted |
 | Time-aware layer settings | Not converted |
-| Nested group layers (> 1 level) | Only one level of flattening applied |
+| Nested group layers (> 1 level) | Only one level of flattening applied for `GroupLayer` |
+| `subLayerIds` group structure in GeoNode output | Not preserved — GeoNode `maplayers` is a flat list; group nodes are skipped and only leaf sublayers are included |
 | `mapFloorInfo` / indoor positioning | Not converted |
 | Private/secured AGOL webmaps (token auth) | Not supported |
 
