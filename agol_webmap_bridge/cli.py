@@ -127,8 +127,8 @@ def main(
     # 5. Write output
     writer.write(map_config, out_path)
 
-    matched = len(map_config.get("layers", []))
-    skipped = layer_count - matched
+    matched = map_config.get("_matched_count", len(map_config.get("layers", [])))
+    skipped = map_config.get("_skipped_count", 0)
     click.echo(
         f"\nDone: {matched} layer(s) matched, {skipped} layer(s) skipped."
         f"\nOutput written to: {out_path}"

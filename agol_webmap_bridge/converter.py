@@ -166,6 +166,8 @@ def convert(
         "srid": _wkid_to_epsg(wkid),
         "extent": _extract_extent(agol_webmap),
         "layers": layers_config,
+        "_matched_count": len(matched),
+        "_skipped_count": len(skipped),
     }
     if groups_config:
         map_config["groups"] = groups_config

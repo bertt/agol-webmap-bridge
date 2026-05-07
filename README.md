@@ -16,6 +16,7 @@ formats (QGIS project, Mapbox GL JSON, …) can be added with minimal effort in 
 - [Installation](#installation)
 - [Usage](#usage)
 - [CLI options](#cli-options)
+- [Layer matching logic](#layer-matching-logic)
 - [Supported AGOL webmap properties](#supported-agol-webmap-properties)
 - [Unsupported / future properties](#unsupported--future-properties)
 - [How to POST the result to GeoNode](#how-to-post-the-result-to-geonode)
@@ -30,8 +31,9 @@ formats (QGIS project, Mapbox GL JSON, …) can be added with minimal effort in 
 - Fetches an AGOL webmap by item GUID via the public REST API.
 - Paginates the GeoNode `/api/v2/datasets/` endpoint to retrieve all available datasets.
 - Matches each AGOL operational layer to the most suitable GeoNode dataset using
-  fuzzy name comparison (`difflib.SequenceMatcher`).  Unmatched layers are skipped
-  with a warning log message.
+  fuzzy name comparison (`difflib.SequenceMatcher`).  The search term is derived
+  from the layer URL (see [Layer matching logic](#layer-matching-logic)).
+  Unmatched layers are skipped with a warning log message.
 - Produces a GeoNode-compatible Map JSON file that can be directly POSTed to the
   GeoNode Maps API.
 - Meaningful output filename derived from the webmap title (slugified).
@@ -101,6 +103,65 @@ This will:
 | `--match-threshold` | — | `0.6` | Min similarity ratio (0–1) for layer matching |
 | `--log-level` | — | `INFO` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `-h` / `--help` | — | — | Show help message |
+
+---
+
+## Layer matching logic
+
+The tool resolves each AGOL operational layer to a GeoNode dataset by deriving a
+**search term from the layer URL** and comparing it (case-insensitively, underscores
+preserved) against the GeoNode `name` field of every dataset.
+
+### Regular layers
+
+For a layer whose URL is:
+
+```
+https://rijnland.enl-mcs.nl/arcgis/rest/services/Gebied/my_layer/MapServer/0
+```
+
+the segment immediately before `/MapServer` (or `/FeatureServer`, etc.) is extracted:
+
+```
+my_layer   →   search term: my_layer
+```
+
+This is compared against `name` values in GeoNode, e.g.:
+
+| GeoNode `name` | Match? |
+|---|---|
+| `my_layer` | ✅ score 1.00 |
+| `My_Layer` | ✅ score 1.00 (case-insensitive) |
+| `other_layer` | ❌ score too low |
+
+### Sublayers (ArcGISMapServiceLayer)
+
+When a MapServer service exposes multiple sublayers (via `layers[]` in the webmap JSON),
+each sublayer has no own URL — only the parent service URL is known.  In that case
+the search term becomes **`<parent_service_name>_<sublayer_title>`**, with spaces in
+the sublayer title replaced by underscores:
+
+| Parent service URL | Sublayer title | Search term |
+|---|---|---|
+| `…/Legger_regionale_kering_vigerend/MapServer` | `Buitenbeschermingszone` | `legger_regionale_kering_vigerend_buitenbeschermingszone` |
+| `…/Legger_regionale_kering_vigerend/MapServer` | `Kernzone` | `legger_regionale_kering_vigerend_kernzone` |
+
+The expected GeoNode dataset `name` for these layers therefore follows the pattern
+`<ParentService>_<SublayerTitle>`, e.g. `Legger_regionale_kering_vigerend_Buitenbeschermingszone`.
+
+### Fallback
+
+Layers with no URL (and no parent URL) are matched on their `title` field using
+standard fuzzy matching.
+
+### Logging
+
+Run with `--log-level DEBUG` to see every individual candidate comparison:
+
+```
+DEBUG agol_webmap_bridge.matcher: Layer 'Buitenbeschermingszone' search candidates: ['legger_regionale_kering_vigerend_buitenbeschermingszone']
+DEBUG agol_webmap_bridge.matcher:   'legger_regionale_kering_vigerend_buitenbeschermingszone' vs 'legger_regionale_kering_vigerend_buitenbeschermingszone' (dataset 'Legger_regionale_kering_vigerend_Buitenbeschermingszone') → 1.00
+```
 
 ---
 
