@@ -115,7 +115,7 @@ def main(
             sys.exit(0)
 
     # 4. Convert
-    writer = GeoNodeWriter()
+    writer = GeoNodeWriter(geonode_url=geonode_url)
     map_config = convert(
         agol_webmap=agol_webmap,
         geonode_datasets=geonode_datasets,

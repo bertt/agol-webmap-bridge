@@ -10,12 +10,28 @@ from agol_webmap_bridge.writers.base_writer import BaseWriter
 
 logger = logging.getLogger(__name__)
 
+_OSM_LAYER = {
+    "type": "osm",
+    "source": "osm",
+    "name": "mapnik",
+    "title": "OpenStreetMap",
+    "visibility": True,
+}
+
 
 class GeoNodeWriter(BaseWriter):
     """Writes the intermediate map config as a GeoNode Map JSON file.
 
-    The produced JSON can be POSTed to ``/api/v2/maps/`` on a GeoNode instance.
+    The produced JSON matches the format accepted by ``POST /api/v2/maps/``
+    on a GeoNode instance, using the ``data.map`` nested structure.
+
+    Args:
+        geonode_url: Base URL of the GeoNode instance (e.g. ``https://example.com``).
+            Used to construct the WMS endpoint URL for each layer.
     """
+
+    def __init__(self, geonode_url: str = "") -> None:
+        self._geonode_url = geonode_url.rstrip("/")
 
     def write(self, map_config: dict, path: Path) -> None:
         """Serialise *map_config* to GeoNode Map JSON and write to *path*.
@@ -34,41 +50,48 @@ class GeoNodeWriter(BaseWriter):
     # ------------------------------------------------------------------
 
     def _build(self, map_config: dict) -> dict:
-        layers = []
+        srid = map_config.get("srid", "EPSG:3857")
+        extent = map_config.get("extent")  # [xmin, ymin, xmax, ymax]
+
+        if extent:
+            cx = (extent[0] + extent[2]) / 2
+            cy = (extent[1] + extent[3]) / 2
+            max_extent = extent
+        else:
+            cx, cy = 0.0, 0.0
+            max_extent = [-20037508.34, -20037508.34, 20037508.34, 20037508.34]
+
+        wms_url = f"{self._geonode_url}/geoserver/ows" if self._geonode_url else ""
+
+        layers: list[dict] = [dict(_OSM_LAYER)]
         for layer in map_config.get("layers", []):
             ds = layer["geonode_dataset"]
-            extra_params: dict = {}
-            group_title = layer.get("group_title", "")
-            if group_title:
-                extra_params["group"] = group_title
-            entry = {
-                "extra_params": extra_params,
-                "current_style": (ds.get("default_style") or {}).get("name", ""),
-                "opacity": layer.get("opacity", 1.0),
+            style = (ds.get("default_style") or {}).get("name", "")
+            entry: dict = {
+                "type": "wms",
+                "url": wms_url,
+                "name": ds.get("alternate", ""),
+                "title": ds.get("title", ""),
+                "group": layer.get("group_title", "") or "overlay",
                 "visibility": layer.get("visibility", True),
-                "dataset": {
-                    "pk": ds.get("pk"),
-                    "alternate": ds.get("alternate"),
-                    "title": ds.get("title"),
-                },
+                "opacity": layer.get("opacity", 1.0),
+                "format": "image/png",
+                "singleTile": False,
+                "styles": [style] if style else [],
             }
             layers.append(entry)
 
-        geonode_map: dict = {
+        return {
             "title": map_config.get("title", "Untitled"),
             "abstract": map_config.get("abstract", ""),
-            "srid": map_config.get("srid", "EPSG:4326"),
-            "maplayers": layers,
+            "data": {
+                "map": {
+                    "projection": srid,
+                    "units": "m",
+                    "zoom": 5,
+                    "center": {"x": cx, "y": cy, "crs": srid},
+                    "maxExtent": max_extent,
+                    "layers": layers,
+                }
+            },
         }
-
-        # Include groups when present
-        groups = map_config.get("groups", [])
-        if groups:
-            geonode_map["groups"] = groups
-
-        # Include extent when available
-        extent = map_config.get("extent")
-        if extent:
-            geonode_map["extent"] = extent
-
-        return geonode_map
