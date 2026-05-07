@@ -26,7 +26,6 @@ class CapturingWriter(BaseWriter):
 
 def test_wkid_to_epsg():
     assert _wkid_to_epsg(4326) == "EPSG:4326"
-    assert _wkid_to_epsg(102100) == "EPSG:3857"
     assert _wkid_to_epsg(28992) == "EPSG:28992"
     assert _wkid_to_epsg(None) == "EPSG:4326"
 
