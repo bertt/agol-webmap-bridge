@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterable
 from pathlib import Path
 
 from pyproj import Transformer
@@ -18,6 +19,7 @@ _OSM_LAYER = {
     "name": "mapnik",
     "title": "OpenStreetMap",
     "visibility": True,
+    "group": "background",
 }
 
 
@@ -52,6 +54,46 @@ class GeoNodeWriter(BaseWriter):
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _build_groups_tree(group_ids: Iterable[str]) -> list[dict]:
+        """Build a nested MapStore2/GeoNode groups array from dot-notation group IDs.
+
+        Each group ID like ``"Legger.Zonering"`` results in a parent ``"Legger"``
+        node containing a child ``"Legger.Zonering"`` node.  Layers reference their
+        group via ``group: "<full dot-notation id>"``.
+
+        ``"Default"`` is MapStore2's built-in root group and is intentionally
+        excluded — it is always present and must not be redefined.
+        """
+        ordered: list[str] = []
+        seen: set[str] = set()
+
+        for gid in group_ids:
+            if not gid or gid == "Default" or gid == "background" or gid in seen:
+                continue
+            # Ensure all ancestor segments exist before the leaf
+            parts = gid.split(".")
+            for depth in range(1, len(parts) + 1):
+                ancestor = ".".join(parts[:depth])
+                if ancestor not in seen:
+                    ordered.append(ancestor)
+                    seen.add(ancestor)
+
+        nodes_by_id: dict[str, dict] = {}
+        root: list[dict] = []
+
+        for gid in ordered:
+            parts = gid.split(".")
+            node: dict = {"id": gid, "title": parts[-1], "expanded": True, "nodes": []}
+            nodes_by_id[gid] = node
+            if len(parts) == 1:
+                root.append(node)
+            else:
+                parent_id = ".".join(parts[:-1])
+                nodes_by_id[parent_id]["nodes"].append(node)
+
+        return root
+
+    @staticmethod
     def _to_3857(srid: str, x: float, y: float) -> tuple[float, float]:
         if srid == "EPSG:3857":
             return x, y
@@ -76,7 +118,7 @@ class GeoNodeWriter(BaseWriter):
 
         wms_url = f"{self._geonode_url}/geoserver/ows" if self._geonode_url else ""
 
-        layers: list[dict] = [dict(_OSM_LAYER)]
+        wms_layers: list[dict] = []
         for layer in map_config.get("layers", []):
             ds = layer["geonode_dataset"]
             style = (ds.get("default_style") or {}).get("name", "")
@@ -85,24 +127,35 @@ class GeoNodeWriter(BaseWriter):
                 "url": wms_url,
                 "name": ds.get("alternate", ""),
                 "title": ds.get("title", ""),
-                "group": layer.get("group_title", "") or "overlay",
+                "group": layer.get("group_title", "") or "Default",
                 "visibility": layer.get("visibility", True),
                 "opacity": layer.get("opacity", 1.0),
                 "format": "image/png",
                 "singleTile": False,
                 "styles": [style] if style else [],
             }
-            layers.append(entry)
+            wms_layers.append(entry)
 
-        # Build groups array from unique group names used by layers.
-        # GeoNode requires data.map.groups to be defined; without it every
-        # layer falls back to the built-in "Default" group in the UI.
-        seen_groups: dict[str, None] = {}  # ordered dedup
+        # MapStore2 renders layers bottom-to-top and shows the TOC top-to-bottom
+        # in reverse array order.  Reversing WMS layers preserves the original
+        # AGOL display order (first AGOL layer → top of GeoNode TOC).
+        # Default-group layers are placed before custom-group layers in the array
+        # so they appear at the bottom of the TOC (below all named groups).
+        default_layers = [l for l in wms_layers if l.get("group") == "Default"]
+        custom_layers = [l for l in wms_layers if l.get("group") != "Default"]
+        layers: list[dict] = (
+            [dict(_OSM_LAYER)]
+            + list(reversed(default_layers))
+            + list(reversed(custom_layers))
+        )
+
+        # Collect unique group IDs in encounter order, then build nested tree.
+        seen_groups: dict[str, None] = {}
         for layer_entry in layers:
             g = layer_entry.get("group", "")
             if g:
                 seen_groups[g] = None
-        groups = [{"id": g, "title": g, "expanded": True} for g in seen_groups]
+        groups = self._build_groups_tree(seen_groups.keys())
 
         return {
             "title": map_config.get("title", "Untitled"),

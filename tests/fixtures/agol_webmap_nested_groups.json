@@ -1,0 +1,51 @@
+{
+  "operationalLayers": [
+    {
+      "id": "group_legger",
+      "title": "Legger",
+      "layerType": "GroupLayer",
+      "layers": [
+        {
+          "id": "kering_as_001",
+          "title": "Regionale kering as (vigerend)",
+          "url": "https://example.com/arcgis/rest/services/Legger/regionale_kering_as_vigerend/MapServer/0",
+          "opacity": 1.0,
+          "visibility": true,
+          "layerType": "ArcGISFeatureLayer"
+        },
+        {
+          "id": "kering_zone_001",
+          "title": "Regionale kering zone (vigerend)",
+          "url": "https://example.com/arcgis/rest/services/Legger/Regionale_kering_zone_vigerend/MapServer",
+          "opacity": 1.0,
+          "visibility": true,
+          "layerType": "ArcGISMapServiceLayer",
+          "layers": [
+            {"id": 0, "name": "Kernzone", "parentLayerId": -1, "defaultVisibility": true},
+            {"id": 1, "name": "Profiel van Vrije Ruimte", "parentLayerId": -1, "defaultVisibility": true},
+            {"id": 2, "name": "Beschermingszone", "parentLayerId": -1, "defaultVisibility": true},
+            {"id": 3, "name": "Buitenbeschermingszone", "parentLayerId": -1, "defaultVisibility": true}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "grens_rijnland_001",
+      "title": "Grens Rijnland",
+      "url": "https://example.com/arcgis/rest/services/Gebied/Grens_Rijnland/MapServer/0",
+      "opacity": 0.49,
+      "visibility": true,
+      "layerType": "ArcGISFeatureLayer"
+    },
+    {
+      "id": "luchtfoto_001",
+      "title": "Luchtfoto (RD)",
+      "url": "https://services.arcgisonline.nl/arcgis/rest/services/Luchtfoto/Luchtfoto/MapServer",
+      "opacity": 1.0,
+      "visibility": false,
+      "layerType": "ArcGISTiledMapServiceLayer"
+    }
+  ],
+  "spatialReference": {"wkid": 28992, "latestWkid": 28992},
+  "baseMap": {"title": "Topo RD", "baseMapLayers": []}
+}

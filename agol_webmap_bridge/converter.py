@@ -151,6 +151,49 @@ def _detect_unsupported(agol_webmap: dict) -> list[UnsupportedFeature]:
     return findings
 
 
+def _flatten_layers(layers: list[dict], group_path: list[str] | None = None) -> list[dict]:
+    """Recursively flatten operational layers, tagging each leaf with its full group path.
+
+    * ``GroupLayer`` → recurses into sub-layers with the group title added to the path.
+    * ``ArcGISMapServiceLayer`` with sublayers → the service title becomes an extra path
+      segment; any internal group nodes within the service add yet another segment.
+    * All other layer types → leaf; ``group_title`` is set to the dot-joined path.
+    """
+    if group_path is None:
+        group_path = []
+
+    flat: list[dict] = []
+    for layer in layers:
+        layer_type = layer.get("layerType", "")
+        title = (layer.get("title") or "").strip()
+
+        if layer_type == "GroupLayer":
+            new_path = group_path + [title] if title else group_path
+            flat.extend(_flatten_layers(layer.get("layers", []), new_path))
+
+        elif layer_type == "ArcGISMapServiceLayer" and layer.get("layers"):
+            sublayers_raw = _extract_service_sublayers(layer)
+            for sublayer in sublayers_raw:
+                sub = dict(sublayer)
+                internal_group = sub.pop("group_title", "")
+                if title:
+                    if internal_group:
+                        sub_path = group_path + [title, internal_group]
+                    else:
+                        sub_path = group_path + [title]
+                else:
+                    sub_path = group_path + ([internal_group] if internal_group else [])
+                sub["group_title"] = ".".join(sub_path)
+                flat.append(sub)
+
+        else:
+            leaf = dict(layer)
+            leaf["group_title"] = ".".join(group_path)
+            flat.append(leaf)
+
+    return flat
+
+
 def convert(
     agol_webmap: dict,
     geonode_datasets: list[dict],
@@ -172,15 +215,8 @@ def convert(
     """
     agol_layers = agol_webmap.get("operationalLayers", [])
 
-    # Flatten group layers and expand MapServer service sublayers
-    flat_layers: list[dict] = []
-    for layer in agol_layers:
-        if layer.get("layerType") == "GroupLayer":
-            flat_layers.extend(layer.get("layers", []))
-        elif layer.get("layerType") == "ArcGISMapServiceLayer" and layer.get("layers"):
-            flat_layers.extend(_extract_service_sublayers(layer))
-        else:
-            flat_layers.append(layer)
+    # Recursively flatten group/service layers, tagging each with its group path
+    flat_layers = _flatten_layers(agol_layers)
 
     match_results: list[MatchResult] = match_layers(flat_layers, geonode_datasets, threshold)
 
@@ -199,15 +235,6 @@ def convert(
         }
         for r in matched
     ]
-
-    # Collect unique groups from matched layers (preserving encounter order)
-    seen_groups: set[str] = set()
-    groups_config: list[dict] = []
-    for r in matched:
-        gt = r.agol_layer.get("group_title", "")
-        if gt and gt not in seen_groups:
-            seen_groups.add(gt)
-            groups_config.append({"title": gt, "visibility": True, "layers": []})
 
     spatial_ref = agol_webmap.get("spatialReference", {})
     wkid = spatial_ref.get("latestWkid") or spatial_ref.get("wkid")
@@ -230,7 +257,5 @@ def convert(
         "_skipped_count": len(skipped),
         "_unsupported_features": _detect_unsupported(agol_webmap),
     }
-    if groups_config:
-        map_config["groups"] = groups_config
 
     return map_config

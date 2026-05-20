@@ -19,6 +19,7 @@ formats (QGIS project, Mapbox GL JSON, …) can be added with minimal effort in 
 - [Layer matching logic](#layer-matching-logic)
 - [Supported AGOL webmap properties](#supported-agol-webmap-properties)
   - [Projection handling](#projection-handling)
+  - [Group layer handling](#group-layer-handling)
 - [Unsupported / future properties](#unsupported--future-properties)
   - [Unsupported features report](#unsupported-features-report)
 - [How to POST the result to GeoNode](#how-to-post-the-result-to-geonode)
@@ -193,6 +194,57 @@ If the AGOL webmap uses a different CRS (e.g. `EPSG:28992` — Dutch RD New), th
 `"EPSG:3857"`.
 
 This ensures compatibility with GeoNode's default Web Mercator tile infrastructure.
+
+---
+
+### Group layer handling
+
+AGOL webmaps can contain **GroupLayers** and **ArcGISMapServiceLayers with sublayers**.
+The tool maps these to a nested group structure in GeoNode (MapStore2), preserving the
+original AGOL hierarchy as closely as possible.
+
+#### How AGOL layer types are mapped
+
+| AGOL layer type | Behaviour |
+|---|---|
+| `GroupLayer` | The group title becomes a parent group in GeoNode; its children are processed recursively |
+| `ArcGISMapServiceLayer` with `layers[]` | The service title becomes a sub-group; leaf sublayers are extracted and matched individually; internal group nodes (`subLayerIds`) are skipped |
+| `ArcGISFeatureLayer` / other leaf layers | Matched directly; placed in their enclosing group (if any) |
+| Top-level layers (no parent group) | Placed in MapStore2's built-in **Default** group |
+
+#### Nesting and dot-notation
+
+Group membership in the GeoNode JSON is expressed using **dot-notation** group IDs.
+A layer inside `GroupLayer "Legger"` → `ArcGISMapServiceLayer "Zonering"` receives the
+group ID `"Legger.Zonering"`.  The `groups` array in the output JSON reflects this
+nested structure:
+
+```json
+"groups": [
+  {
+    "id": "Legger",
+    "title": "Legger",
+    "expanded": true,
+    "nodes": [
+      { "id": "Legger.Zonering", "title": "Zonering", "expanded": true, "nodes": [] }
+    ]
+  }
+]
+```
+
+Ancestor groups are created automatically — if only a deeply nested layer is present,
+all intermediate parent groups are inserted.
+
+#### TOC order
+
+The GeoNode layers panel (TOC) mirrors the display order of the original AGOL webmap:
+
+- Layers are written in reverse array order in the JSON so that MapStore2 renders them
+  top-to-bottom in the same order as AGOL.
+- The built-in **Default** group (top-level layers without a parent group) always appears
+  **at the bottom** of the TOC, below all named groups.
+- The **OpenStreetMap** basemap is placed in MapStore2's `background` group so it
+  appears in the basemap switcher rather than the main layers panel.
 
 ---
 

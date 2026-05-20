@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from agol_webmap_bridge.converter import _wkid_to_epsg, _extract_extent, _extract_service_sublayers, _detect_unsupported, convert
+from agol_webmap_bridge.converter import _wkid_to_epsg, _extract_extent, _extract_service_sublayers, _flatten_layers, _detect_unsupported, convert
 from agol_webmap_bridge.writers.base_writer import BaseWriter
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -309,4 +309,121 @@ def test_convert_unsupported_features_in_map_config():
     features = [f["feature"] for f in unsupported]
     assert "Bookmarks" in features
     assert "Popup configuration (popupInfo)" in features
+
+
+# ---------------------------------------------------------------------------
+# _flatten_layers — group path propagation
+# ---------------------------------------------------------------------------
+
+def test_flatten_layers_top_level_leaf_has_empty_group():
+    layers = [{"title": "My Layer", "layerType": "ArcGISFeatureLayer"}]
+    result = _flatten_layers(layers)
+    assert result[0]["group_title"] == ""
+
+
+def test_flatten_layers_group_layer_propagates_title():
+    layers = [
+        {
+            "title": "Legger",
+            "layerType": "GroupLayer",
+            "layers": [
+                {"title": "Kernzone", "layerType": "ArcGISFeatureLayer"},
+            ],
+        }
+    ]
+    result = _flatten_layers(layers)
+    assert len(result) == 1
+    assert result[0]["group_title"] == "Legger"
+
+
+def test_flatten_layers_service_inside_group_creates_nested_path():
+    layers = [
+        {
+            "title": "Legger",
+            "layerType": "GroupLayer",
+            "layers": [
+                {
+                    "title": "Zonering",
+                    "layerType": "ArcGISMapServiceLayer",
+                    "layers": [
+                        {"id": 0, "name": "Kernzone", "parentLayerId": -1, "defaultVisibility": True},
+                    ],
+                }
+            ],
+        }
+    ]
+    result = _flatten_layers(layers)
+    assert len(result) == 1
+    assert result[0]["group_title"] == "Legger.Zonering"
+
+
+def test_flatten_layers_service_internal_group_adds_third_level():
+    layers = [
+        {
+            "title": "Legger",
+            "layerType": "GroupLayer",
+            "layers": [
+                {
+                    "title": "Kering",
+                    "layerType": "ArcGISMapServiceLayer",
+                    "layers": [
+                        {"id": 0, "name": "Groep", "parentLayerId": -1, "defaultVisibility": True, "subLayerIds": [1]},
+                        {"id": 1, "name": "Kernzone", "parentLayerId": 0, "defaultVisibility": True},
+                    ],
+                }
+            ],
+        }
+    ]
+    result = _flatten_layers(layers)
+    kernzone = next(r for r in result if r["title"] == "Kernzone")
+    assert kernzone["group_title"] == "Legger.Kering.Groep"
+
+
+def test_flatten_layers_mixed_siblings_in_group():
+    """Direct leaf + service sublayers inside the same GroupLayer."""
+    layers = [
+        {
+            "title": "Legger",
+            "layerType": "GroupLayer",
+            "layers": [
+                {"title": "Direct leaf", "layerType": "ArcGISFeatureLayer"},
+                {
+                    "title": "Zonering",
+                    "layerType": "ArcGISMapServiceLayer",
+                    "layers": [
+                        {"id": 0, "name": "Kernzone", "parentLayerId": -1, "defaultVisibility": True},
+                    ],
+                },
+            ],
+        }
+    ]
+    result = _flatten_layers(layers)
+    direct = next(r for r in result if r.get("title") == "Direct leaf")
+    kernzone = next(r for r in result if r.get("title") == "Kernzone")
+    assert direct["group_title"] == "Legger"
+    assert kernzone["group_title"] == "Legger.Zonering"
+
+
+def test_convert_nested_groups_fixture():
+    """End-to-end: GroupLayer + ArcGISMapServiceLayer produces correct nested group_titles."""
+    agol_webmap = load_fixture("agol_webmap_nested_groups.json")
+    # Dataset names must match the search terms produced by the matcher:
+    # - ArcGISFeatureLayer URL .../regionale_kering_as_vigerend/MapServer/0 → "regionale_kering_as_vigerend"
+    # - Sublayer "Kernzone" of service "Regionale_kering_zone_vigerend"     → "regionale_kering_zone_vigerend_kernzone"
+    # - ArcGISFeatureLayer URL .../Grens_Rijnland/MapServer/0               → "grens_rijnland"
+    datasets = [
+        {"pk": "1", "title": "Regionale kering as (vigerend)", "name": "regionale_kering_as_vigerend", "alternate": "ws:kering_as", "default_style": None},
+        {"pk": "2", "title": "Kernzone", "name": "regionale_kering_zone_vigerend_kernzone", "alternate": "ws:kernzone", "default_style": None},
+        {"pk": "3", "title": "Beschermingszone", "name": "regionale_kering_zone_vigerend_beschermingszone", "alternate": "ws:beschermingszone", "default_style": None},
+        {"pk": "4", "title": "Grens Rijnland", "name": "grens_rijnland", "alternate": "ws:grens_rijnland", "default_style": None},
+    ]
+    writer = CapturingWriter()
+    map_config = convert(agol_webmap=agol_webmap, geonode_datasets=datasets, writer=writer, threshold=0.5)
+
+    by_title = {l["geonode_dataset"]["title"]: l for l in map_config["layers"]}
+
+    assert by_title["Regionale kering as (vigerend)"]["group_title"] == "Legger"
+    assert by_title["Kernzone"]["group_title"] == "Legger.Regionale kering zone (vigerend)"
+    assert by_title["Beschermingszone"]["group_title"] == "Legger.Regionale kering zone (vigerend)"
+    assert by_title["Grens Rijnland"].get("group_title", "") == ""
 
