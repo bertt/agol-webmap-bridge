@@ -133,3 +133,13 @@ def main(
         f"\nDone: {matched} layer(s) matched, {skipped} layer(s) skipped."
         f"\nOutput written to: {out_path}"
     )
+
+    # 6. Unsupported features report
+    unsupported: list[dict] = map_config.get("_unsupported_features", [])
+    if unsupported:
+        click.echo("\n⚠  Unsupported AGOL features detected (not converted):")
+        for item in unsupported:
+            layer_label = f"  [layer: {item['layer']}]" if item["layer"] else "  [webmap level]"
+            click.echo(f"   • {item['feature']}{layer_label}")
+    else:
+        click.echo("\n✓  No unsupported features detected.")

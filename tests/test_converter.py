@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from agol_webmap_bridge.converter import _wkid_to_epsg, _extract_extent, _extract_service_sublayers, convert
+from agol_webmap_bridge.converter import _wkid_to_epsg, _extract_extent, _extract_service_sublayers, _detect_unsupported, convert
 from agol_webmap_bridge.writers.base_writer import BaseWriter
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -200,4 +200,113 @@ def test_convert_service_sublayers_opacity_preserved():
     kernzone_layer = next((l for l in map_config["layers"] if l["geonode_dataset"]["title"] == "Kernzone"), None)
     assert kernzone_layer is not None
     assert kernzone_layer["opacity"] == 0.75
+
+
+# ---------------------------------------------------------------------------
+# Unsupported features detection
+# ---------------------------------------------------------------------------
+
+def test_detect_unsupported_empty_webmap():
+    assert _detect_unsupported({}) == []
+
+
+def test_detect_unsupported_bookmarks():
+    webmap = {"bookmarks": [{"name": "View 1"}]}
+    findings = _detect_unsupported(webmap)
+    features = [f["feature"] for f in findings]
+    assert "Bookmarks" in features
+    assert all(f["layer"] is None for f in findings if f["feature"] == "Bookmarks")
+
+
+def test_detect_unsupported_tables():
+    webmap = {"tables": [{"id": "t1", "title": "My Table"}]}
+    findings = _detect_unsupported(webmap)
+    assert any(f["feature"] == "Non-spatial tables" for f in findings)
+
+
+def test_detect_unsupported_mapfloorinfo():
+    webmap = {"mapFloorInfo": {"floorFilterEnabled": True}}
+    findings = _detect_unsupported(webmap)
+    assert any(f["feature"] == "Indoor map / mapFloorInfo" for f in findings)
+
+
+def test_detect_unsupported_renderer_on_layer():
+    webmap = {
+        "operationalLayers": [
+            {"title": "My Layer", "renderer": {"type": "simple"}, "layerType": "ArcGISFeatureLayer"},
+        ]
+    }
+    findings = _detect_unsupported(webmap)
+    match = next((f for f in findings if f["feature"] == "Renderer / symbology"), None)
+    assert match is not None
+    assert match["layer"] == "My Layer"
+
+
+def test_detect_unsupported_popupinfo_on_layer():
+    webmap = {
+        "operationalLayers": [
+            {"title": "Popup Layer", "popupInfo": {"title": "{Name}"}, "layerType": "ArcGISFeatureLayer"},
+        ]
+    }
+    findings = _detect_unsupported(webmap)
+    match = next((f for f in findings if f["feature"] == "Popup configuration (popupInfo)"), None)
+    assert match is not None
+    assert match["layer"] == "Popup Layer"
+
+
+def test_detect_unsupported_timeinfo_on_layer():
+    webmap = {
+        "operationalLayers": [
+            {"title": "Time Layer", "timeInfo": {"startField": "date"}, "layerType": "ArcGISFeatureLayer"},
+        ]
+    }
+    findings = _detect_unsupported(webmap)
+    assert any(f["feature"] == "Time-aware layer settings" and f["layer"] == "Time Layer" for f in findings)
+
+
+def test_detect_unsupported_definition_expression():
+    webmap = {
+        "operationalLayers": [
+            {
+                "title": "Filtered Layer",
+                "layerType": "ArcGISFeatureLayer",
+                "layerDefinition": {"definitionExpression": "STATUS = 'active'"},
+            },
+        ]
+    }
+    findings = _detect_unsupported(webmap)
+    assert any(f["feature"] == "Definition expression / filter" and f["layer"] == "Filtered Layer" for f in findings)
+
+
+def test_detect_unsupported_nested_group_layer():
+    webmap = {
+        "operationalLayers": [
+            {
+                "title": "Outer Group",
+                "layerType": "GroupLayer",
+                "layers": [
+                    {"title": "Inner Group", "layerType": "GroupLayer", "layers": []},
+                ],
+            }
+        ]
+    }
+    findings = _detect_unsupported(webmap)
+    assert any(f["feature"] == "Nested group layer (> 1 level deep)" for f in findings)
+
+
+def test_convert_unsupported_features_in_map_config():
+    """convert() must store _unsupported_features in map_config."""
+    webmap = {
+        "operationalLayers": [
+            {"title": "Layer A", "popupInfo": {"title": "{Name}"}, "layerType": "ArcGISFeatureLayer"},
+        ],
+        "bookmarks": [{"name": "View 1"}],
+        "spatialReference": {"wkid": 4326},
+    }
+    writer = CapturingWriter()
+    map_config = convert(agol_webmap=webmap, geonode_datasets=[], writer=writer)
+    unsupported = map_config["_unsupported_features"]
+    features = [f["feature"] for f in unsupported]
+    assert "Bookmarks" in features
+    assert "Popup configuration (popupInfo)" in features
 

@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import logging
+from typing import TypedDict
 
 from agol_webmap_bridge.matcher import MatchResult, match_layers
 from agol_webmap_bridge.writers.base_writer import BaseWriter
 
 logger = logging.getLogger(__name__)
+
+
+class UnsupportedFeature(TypedDict):
+    feature: str
+    layer: str | None  # layer title, or None for webmap-level features
 
 
 def _wkid_to_epsg(wkid: int | None) -> str:
@@ -91,6 +97,60 @@ def _extract_service_sublayers(layer: dict) -> list[dict]:
     return leaf_layers if leaf_layers else [layer]
 
 
+def _detect_unsupported(agol_webmap: dict) -> list[UnsupportedFeature]:
+    """Scan *agol_webmap* for features that are not converted and return a report.
+
+    Each entry has a ``feature`` description and an optional ``layer`` title
+    (``None`` for webmap-level findings).
+    """
+    findings: list[UnsupportedFeature] = []
+
+    # Webmap-level checks
+    if agol_webmap.get("bookmarks"):
+        findings.append({"feature": "Bookmarks", "layer": None})
+
+    if agol_webmap.get("tables"):
+        findings.append({"feature": "Non-spatial tables", "layer": None})
+
+    if agol_webmap.get("mapFloorInfo"):
+        findings.append({"feature": "Indoor map / mapFloorInfo", "layer": None})
+
+    # Per-layer checks (flatten one level of GroupLayer for scanning)
+    all_layers: list[dict] = []
+    for layer in agol_webmap.get("operationalLayers", []):
+        all_layers.append(layer)
+        if layer.get("layerType") == "GroupLayer":
+            sub_layers = layer.get("layers", [])
+            all_layers.extend(sub_layers)
+            # Detect nested group layers (> 1 level deep)
+            for sub in sub_layers:
+                if sub.get("layerType") == "GroupLayer":
+                    findings.append({
+                        "feature": "Nested group layer (> 1 level deep)",
+                        "layer": sub.get("title") or layer.get("title"),
+                    })
+
+    for layer in all_layers:
+        title: str | None = layer.get("title") or None
+
+        if layer.get("renderer"):
+            findings.append({"feature": "Renderer / symbology", "layer": title})
+
+        if layer.get("popupInfo"):
+            findings.append({"feature": "Popup configuration (popupInfo)", "layer": title})
+
+        if layer.get("layerDefinition", {}).get("definitionExpression"):
+            findings.append({"feature": "Definition expression / filter", "layer": title})
+
+        if layer.get("timeInfo") or layer.get("layerDefinition", {}).get("timeInfo"):
+            findings.append({"feature": "Time-aware layer settings", "layer": title})
+
+        if layer.get("layerDefinition", {}).get("fields"):
+            findings.append({"feature": "Field configurations", "layer": title})
+
+    return findings
+
+
 def convert(
     agol_webmap: dict,
     geonode_datasets: list[dict],
@@ -168,6 +228,7 @@ def convert(
         "layers": layers_config,
         "_matched_count": len(matched),
         "_skipped_count": len(skipped),
+        "_unsupported_features": _detect_unsupported(agol_webmap),
     }
     if groups_config:
         map_config["groups"] = groups_config

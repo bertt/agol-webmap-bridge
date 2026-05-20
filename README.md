@@ -20,6 +20,7 @@ formats (QGIS project, Mapbox GL JSON, …) can be added with minimal effort in 
 - [Supported AGOL webmap properties](#supported-agol-webmap-properties)
   - [Projection handling](#projection-handling)
 - [Unsupported / future properties](#unsupported--future-properties)
+  - [Unsupported features report](#unsupported-features-report)
 - [How to POST the result to GeoNode](#how-to-post-the-result-to-geonode)
 - [Extending with a new writer](#extending-with-a-new-writer)
 - [Running the tests](#running-the-tests)
@@ -213,6 +214,41 @@ or noted in comments.  Contributions or later phases may add support for them.
 | `subLayerIds` group structure in GeoNode output | Not preserved — GeoNode `maplayers` is a flat list; group nodes are skipped and only leaf sublayers are included |
 | `mapFloorInfo` / indoor positioning | Not converted |
 | Private/secured AGOL webmaps (token auth) | Not supported |
+
+### Unsupported features report
+
+After every conversion the CLI automatically scans the AGOL webmap and prints a
+report of any unsupported features it found, together with the layer they belong to.
+
+**Example output — issues found:**
+
+```
+⚠  Unsupported AGOL features detected (not converted):
+   • Bookmarks  [webmap level]
+   • Renderer / symbology  [layer: Grens Rijnland]
+   • Popup configuration (popupInfo)  [layer: Woningbouwlocaties]
+   • Time-aware layer settings  [layer: Woningbouwlocaties]
+```
+
+**Example output — nothing to report:**
+
+```
+✓  No unsupported features detected.
+```
+
+The following conditions are checked automatically:
+
+| Check | Scope |
+|---|---|
+| `bookmarks` present | Webmap level |
+| `tables[]` present | Webmap level |
+| `mapFloorInfo` present | Webmap level |
+| `renderer` present on layer | Per layer |
+| `popupInfo` present on layer | Per layer |
+| `layerDefinition.definitionExpression` set | Per layer |
+| `timeInfo` present on layer | Per layer |
+| `layerDefinition.fields` present on layer | Per layer |
+| Nested `GroupLayer` (> 1 level deep) | Per layer |
 
 ---
 
