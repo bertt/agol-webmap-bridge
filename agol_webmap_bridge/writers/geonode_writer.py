@@ -94,6 +94,16 @@ class GeoNodeWriter(BaseWriter):
             }
             layers.append(entry)
 
+        # Build groups array from unique group names used by layers.
+        # GeoNode requires data.map.groups to be defined; without it every
+        # layer falls back to the built-in "Default" group in the UI.
+        seen_groups: dict[str, None] = {}  # ordered dedup
+        for layer_entry in layers:
+            g = layer_entry.get("group", "")
+            if g:
+                seen_groups[g] = None
+        groups = [{"id": g, "title": g, "expanded": True} for g in seen_groups]
+
         return {
             "title": map_config.get("title", "Untitled"),
             "abstract": map_config.get("abstract", ""),
@@ -104,6 +114,7 @@ class GeoNodeWriter(BaseWriter):
                     "zoom": 5,
                     "center": {"x": cx, "y": cy, "crs": output_srid},
                     "maxExtent": max_extent,
+                    "groups": groups,
                     "layers": layers,
                 }
             },

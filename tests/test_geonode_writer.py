@@ -197,3 +197,44 @@ def test_writer_default_center_when_no_extent(tmp_path):
     assert map_["center"]["x"] == 0.0
     assert map_["center"]["y"] == 0.0
 
+
+# ---------------------------------------------------------------------------
+# Groups
+# ---------------------------------------------------------------------------
+
+def test_writer_groups_written_to_map(tmp_path):
+    map_config = {
+        "title": "T", "abstract": "", "srid": "EPSG:4326",
+        "layers": [
+            _make_layer("1", "Layer A", group_title="Keringen"),
+            _make_layer("2", "Layer B", group_title="Keringen"),
+            _make_layer("3", "Layer C"),
+        ],
+    }
+    writer = GeoNodeWriter()
+    out = tmp_path / "out.json"
+    writer.write(map_config, out)
+    map_ = json.loads(out.read_text())["data"]["map"]
+
+    groups = map_["groups"]
+    group_ids = [g["id"] for g in groups]
+    assert "Keringen" in group_ids
+    assert "overlay" in group_ids
+    # No duplicates
+    assert len(group_ids) == len(set(group_ids))
+
+
+def test_writer_groups_have_required_fields(tmp_path):
+    map_config = {
+        "title": "T", "abstract": "", "srid": "EPSG:4326",
+        "layers": [_make_layer("1", "Layer A", group_title="MyGroup")],
+    }
+    writer = GeoNodeWriter()
+    out = tmp_path / "out.json"
+    writer.write(map_config, out)
+    groups = json.loads(out.read_text())["data"]["map"]["groups"]
+
+    my_group = next(g for g in groups if g["id"] == "MyGroup")
+    assert my_group["title"] == "MyGroup"
+    assert my_group["expanded"] is True
+
