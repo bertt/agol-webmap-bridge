@@ -12,6 +12,7 @@ license = { text = "MIT" }
 dependencies = [
     "click>=8.1",
     "requests>=2.31",
+    "pyproj>=3.0",
 ]
 
 [project.optional-dependencies]

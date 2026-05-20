@@ -6,6 +6,8 @@ import json
 import logging
 from pathlib import Path
 
+from pyproj import Transformer
+
 from agol_webmap_bridge.writers.base_writer import BaseWriter
 
 logger = logging.getLogger(__name__)
@@ -49,14 +51,25 @@ class GeoNodeWriter(BaseWriter):
     # Internal helpers
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _to_3857(srid: str, x: float, y: float) -> tuple[float, float]:
+        if srid == "EPSG:3857":
+            return x, y
+        t = Transformer.from_crs(srid, "EPSG:3857", always_xy=True)
+        return t.transform(x, y)
+
     def _build(self, map_config: dict) -> dict:
         srid = map_config.get("srid", "EPSG:3857")
-        extent = map_config.get("extent")  # [xmin, ymin, xmax, ymax]
+        extent = map_config.get("extent")  # [xmin, ymin, xmax, ymax] in source CRS
+        output_srid = "EPSG:3857"
 
         if extent:
-            cx = (extent[0] + extent[2]) / 2
-            cy = (extent[1] + extent[3]) / 2
-            max_extent = extent
+            src_cx = (extent[0] + extent[2]) / 2
+            src_cy = (extent[1] + extent[3]) / 2
+            cx, cy = self._to_3857(srid, src_cx, src_cy)
+            xmin, ymin = self._to_3857(srid, extent[0], extent[1])
+            xmax, ymax = self._to_3857(srid, extent[2], extent[3])
+            max_extent = [xmin, ymin, xmax, ymax]
         else:
             cx, cy = 0.0, 0.0
             max_extent = [-20037508.34, -20037508.34, 20037508.34, 20037508.34]
@@ -86,10 +99,10 @@ class GeoNodeWriter(BaseWriter):
             "abstract": map_config.get("abstract", ""),
             "data": {
                 "map": {
-                    "projection": srid,
+                    "projection": output_srid,
                     "units": "m",
                     "zoom": 5,
-                    "center": {"x": cx, "y": cy, "crs": srid},
+                    "center": {"x": cx, "y": cy, "crs": output_srid},
                     "maxExtent": max_extent,
                     "layers": layers,
                 }

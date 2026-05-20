@@ -18,6 +18,7 @@ formats (QGIS project, Mapbox GL JSON, …) can be added with minimal effort in 
 - [CLI options](#cli-options)
 - [Layer matching logic](#layer-matching-logic)
 - [Supported AGOL webmap properties](#supported-agol-webmap-properties)
+  - [Projection handling](#projection-handling)
 - [Unsupported / future properties](#unsupported--future-properties)
 - [How to POST the result to GeoNode](#how-to-post-the-result-to-geonode)
 - [Extending with a new writer](#extending-with-a-new-writer)
@@ -178,6 +179,19 @@ DEBUG agol_webmap_bridge.matcher:   'legger_regionale_kering_vigerend_buitenbesc
 | `baseMap.title` | `abstract` | Stored as `"Basemap: …"` in abstract field |
 | Group layers (`GroupLayer`) | — | Sub-layers are flattened and matched individually |
 | `ArcGISMapServiceLayer` with `layers[]` | `maplayers[]` (flat) | Leaf sublayers are extracted and matched individually; group nodes (`subLayerIds` present) are skipped; opacity/visibility inherited from the service layer |
+
+### Projection handling
+
+The output GeoNode map **always uses `EPSG:3857`** (Web Mercator) as its projection,
+regardless of the spatial reference defined in the AGOL webmap.
+
+If the AGOL webmap uses a different CRS (e.g. `EPSG:28992` — Dutch RD New), the
+`center` point and `maxExtent` bounding box are automatically reprojected to
+`EPSG:3857` using [pyproj](https://pyproj4.github.io/pyproj/).  Both the
+`map.projection` and `map.center.crs` fields in the output JSON are set to
+`"EPSG:3857"`.
+
+This ensures compatibility with GeoNode's default Web Mercator tile infrastructure.
 
 ---
 

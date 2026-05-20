@@ -50,7 +50,7 @@ def test_writer_produces_data_map_structure(tmp_path):
     assert "data" in result
     assert "map" in result["data"]
     map_ = result["data"]["map"]
-    assert map_["projection"] == "EPSG:28992"
+    assert map_["projection"] == "EPSG:3857"
     assert map_["units"] == "m"
     assert "zoom" in map_
     assert "center" in map_
@@ -173,9 +173,15 @@ def test_writer_center_computed_from_extent(tmp_path):
     writer.write(map_config, out)
     map_ = json.loads(out.read_text())["data"]["map"]
 
-    assert map_["center"]["x"] == 150000.0
-    assert map_["center"]["y"] == 450000.0
-    assert map_["maxExtent"] == [100000, 400000, 200000, 500000]
+    # Coordinates are reprojected from EPSG:28992 to EPSG:3857
+    assert map_["projection"] == "EPSG:3857"
+    assert map_["center"]["crs"] == "EPSG:3857"
+    assert abs(map_["center"]["x"] - 591588.612) < 1
+    assert abs(map_["center"]["y"] - 6807054.577) < 1
+    assert abs(map_["maxExtent"][0] - 511356.799) < 1
+    assert abs(map_["maxExtent"][1] - 6725651.376) < 1
+    assert abs(map_["maxExtent"][2] - 673448.634) < 1
+    assert abs(map_["maxExtent"][3] - 6888457.163) < 1
 
 
 def test_writer_default_center_when_no_extent(tmp_path):
