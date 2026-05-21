@@ -31,9 +31,11 @@ formats (QGIS project, Mapbox GL JSON, …) can be added with minimal effort in 
 
 ## Features
 
-- Fetches an AGOL AppConfiguration by item GUID via the public REST API, validates
-  that it is of type `webmap`, extracts the title and webmap GUID, and then fetches
-  the actual webmap.
+- Accepts either an **AppConfiguration GUID** or a **direct webmap GUID** —
+  the type is detected automatically based on the AGOL REST API response.
+  When an AppConfiguration is provided, the tool validates that it is of type
+  `webmap`, extracts the title and webmap GUID, and then fetches the actual webmap.
+  When a direct webmap GUID is provided, the AppConfiguration step is skipped.
 - Paginates the GeoNode `/api/v2/datasets/` endpoint to retrieve all available datasets.
 - Matches each AGOL operational layer to the most suitable GeoNode dataset using
   fuzzy name comparison (`difflib.SequenceMatcher`).  The search term is derived
@@ -77,10 +79,13 @@ pip install -e ".[dev]"
 ## Usage
 
 ```bash
-agol-webmap-bridge APP_CONFIGURATION_GUID --geonode-url GEONODE_URL [OPTIONS]
+agol-webmap-bridge GUID --geonode-url GEONODE_URL [OPTIONS]
 ```
 
-**Example:**
+`GUID` can be either an **AppConfiguration GUID** or a **direct webmap GUID** —
+the tool detects the type automatically.
+
+**Example — AppConfiguration GUID:**
 
 ```bash
 agol-webmap-bridge 2b214417eea74ae9a56119c251ffa960 \
@@ -92,10 +97,23 @@ agol-webmap-bridge 2b214417eea74ae9a56119c251ffa960 \
 This will:
 
 1. Fetch the AppConfiguration at `https://www.arcgis.com/sharing/rest/content/items/2b214417eea74ae9a56119c251ffa960/data`
-2. Validate that `type == "webmap"`, extract the title and webmap GUID (e.g. `8a9a419b704e4e03bb98d9f14226a743`)
+2. Detect type `AppConfiguration → webmap`, extract the title and webmap GUID (e.g. `8a9a419b704e4e03bb98d9f14226a743`)
 3. Fetch the webmap at `https://www.arcgis.com/sharing/rest/content/items/8a9a419b704e4e03bb98d9f14226a743/data`
 4. Fetch all datasets from `https://your-geonode.example.com/api/v2/datasets/`
 5. Match layers by name and write the result to `output/<webmap-title>_geonode.json`
+
+**Example — direct webmap GUID:**
+
+```bash
+agol-webmap-bridge d0b3a31896d84b0592a32a61c1334532 \
+  --geonode-url https://your-geonode.example.com
+```
+
+This will:
+
+1. Fetch `https://www.arcgis.com/sharing/rest/content/items/d0b3a31896d84b0592a32a61c1334532/data`
+2. Detect type `direct webmap` (response contains `operationalLayers`)
+3. Continue directly with layer matching — no AppConfiguration lookup needed
 
 ---
 
@@ -103,7 +121,7 @@ This will:
 
 | Option | Short | Default | Description |
 |---|---|---|---|
-| `APP_CONFIGURATION_GUID` | — | *(required)* | AGOL item GUID of the AppConfiguration |
+| `GUID` | — | *(required)* | AGOL item GUID — either a webmap or an AppConfiguration (auto-detected) |
 | `--geonode-url` | `-g` | *(required)* | Base URL of the GeoNode instance |
 | `--output-dir` | `-o` | `output` | Directory to write the output JSON file |
 | `--force` | `-f` | off | Overwrite existing output without prompting |

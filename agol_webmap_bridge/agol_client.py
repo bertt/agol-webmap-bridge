@@ -79,3 +79,49 @@ def fetch_webmap(guid: str) -> dict:
         AGOLError: On HTTP error or non-JSON response.
     """
     return _fetch_item_data(guid)
+
+
+def detect_and_fetch_webmap(guid: str) -> tuple[str, str, dict]:
+    """Auto-detect whether *guid* is a webmap or an AppConfiguration and fetch accordingly.
+
+    Detection rules:
+    - If the returned JSON contains ``operationalLayers`` it is treated as a
+      direct webmap GUID.
+    - If the returned JSON contains ``values.type == "webmap"`` it is treated
+      as an AppConfiguration GUID; the webmap GUID is extracted and fetched.
+    - Otherwise an :class:`AGOLError` is raised.
+
+    Args:
+        guid: An AGOL item GUID — either a webmap or an AppConfiguration.
+
+    Returns:
+        A tuple of (guid_type, webmap_title, webmap_data) where *guid_type* is
+        ``"webmap"`` or ``"appconfiguration"``.
+
+    Raises:
+        AGOLError: If the item cannot be fetched or is neither a webmap nor a
+                   supported AppConfiguration.
+    """
+    data = _fetch_item_data(guid)
+
+    # Direct webmap: has operationalLayers at the top level
+    if "operationalLayers" in data:
+        title: str = data.get("title", "") or guid
+        return "webmap", title, data
+
+    # AppConfiguration: has values.type == "webmap"
+    values: dict = data.get("values", {})
+    if values.get("type") == "webmap":
+        title = values.get("title", "")
+        if not title:
+            raise AGOLError(f"AppConfiguration '{guid}' has no 'title' field in values.")
+        webmap_guid: str = values.get("webmap", "")
+        if not webmap_guid:
+            raise AGOLError(f"AppConfiguration '{guid}' has no 'webmap' field in values.")
+        webmap_data = fetch_webmap(webmap_guid)
+        return "appconfiguration", title, webmap_data
+
+    raise AGOLError(
+        f"Item '{guid}' is neither a webmap (no 'operationalLayers') nor a "
+        f"supported AppConfiguration (values.type={values.get('type')!r})."
+    )

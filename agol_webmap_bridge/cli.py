@@ -11,7 +11,7 @@ from pathlib import Path
 
 import click
 
-from agol_webmap_bridge.agol_client import AGOLError, fetch_app_configuration, fetch_webmap
+from agol_webmap_bridge.agol_client import AGOLError, detect_and_fetch_webmap
 from agol_webmap_bridge.converter import convert
 from agol_webmap_bridge.geonode_client import GeoNodeError, fetch_datasets
 from agol_webmap_bridge.writers.geonode_writer import GeoNodeWriter
@@ -34,7 +34,7 @@ def _setup_logging(level: str) -> None:
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
-@click.argument("app_configuration_guid")
+@click.argument("guid")
 @click.option(
     "--geonode-url", "-g",
     required=True,
@@ -67,7 +67,7 @@ def _setup_logging(level: str) -> None:
     help="Logging verbosity.",
 )
 def main(
-    app_configuration_guid: str,
+    guid: str,
     geonode_url: str,
     output_dir: str,
     force: bool,
@@ -76,31 +76,33 @@ def main(
 ) -> None:
     """Convert an ArcGIS Online webmap to a GeoNode Map JSON file.
 
-    APP_CONFIGURATION_GUID is the item GUID of the ArcGIS Online AppConfiguration,
-    e.g. 2b214417eea74ae9a56119c251ffa960. The AppConfiguration must have
-    type='webmap' and contain a 'webmap' field pointing to the actual webmap GUID.
+    GUID is either:
+
+    \b
+      - An AppConfiguration item GUID (e.g. 2b214417eea74ae9a56119c251ffa960).
+        The tool fetches the AppConfiguration, validates type='webmap', and
+        resolves the embedded webmap GUID automatically.
+      - A direct webmap item GUID (e.g. d0b3a31896d84b0592a32a61c1334532).
+        The tool fetches the webmap directly, skipping the AppConfiguration step.
+
+    The type is detected automatically based on the AGOL REST API response.
     """
     _setup_logging(log_level)
     logger = logging.getLogger(__name__)
 
-    # 1. Fetch AppConfiguration and resolve webmap GUID + title
-    click.echo(f"Fetching AppConfiguration {app_configuration_guid} …")
+    # 1. Auto-detect GUID type and fetch the webmap
+    click.echo(f"Fetching AGOL item {guid} …")
     try:
-        webmap_title, webmap_guid = fetch_app_configuration(app_configuration_guid)
+        guid_type, webmap_title, agol_webmap = detect_and_fetch_webmap(guid)
     except AGOLError as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
+
+    if guid_type == "appconfiguration":
+        click.echo(f"  Detected: AppConfiguration → webmap")
+    else:
+        click.echo(f"  Detected: direct webmap")
     click.echo(f"  Title: {webmap_title}")
-    click.echo(f"  Webmap GUID: {webmap_guid}")
-
-    # 2. Fetch AGOL webmap
-    click.echo(f"Fetching AGOL webmap {webmap_guid} …")
-    try:
-        agol_webmap = fetch_webmap(webmap_guid)
-    except AGOLError as exc:
-        click.echo(f"Error: {exc}", err=True)
-        sys.exit(1)
-
     layer_count = len(agol_webmap.get("operationalLayers", []))
     click.echo(f"  Operational layers: {layer_count}")
 
