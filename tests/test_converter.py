@@ -242,6 +242,27 @@ def test_detect_unsupported_renderer_on_layer():
     assert match["layer"] == "My Layer"
 
 
+def test_detect_unsupported_drawing_info_renderer_on_layer():
+    """drawingInfo.renderer inside layerDefinition must be detected (real AGOL structure)."""
+    webmap = {
+        "operationalLayers": [
+            {
+                "title": "Grens Rijnland",
+                "layerType": "ArcGISFeatureLayer",
+                "layerDefinition": {
+                    "drawingInfo": {
+                        "renderer": {"type": "simple", "symbol": {"type": "esriSFS"}}
+                    }
+                },
+            },
+        ]
+    }
+    findings = _detect_unsupported(webmap)
+    match = next((f for f in findings if f["feature"] == "Renderer / symbology"), None)
+    assert match is not None
+    assert match["layer"] == "Grens Rijnland"
+
+
 def test_detect_unsupported_popupinfo_on_layer():
     webmap = {
         "operationalLayers": [

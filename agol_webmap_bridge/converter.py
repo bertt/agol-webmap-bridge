@@ -133,7 +133,8 @@ def _detect_unsupported(agol_webmap: dict) -> list[UnsupportedFeature]:
     for layer in all_layers:
         title: str | None = layer.get("title") or None
 
-        if layer.get("renderer"):
+        drawing_info = layer.get("layerDefinition", {}).get("drawingInfo", {})
+        if layer.get("renderer") or drawing_info.get("renderer"):
             findings.append({"feature": "Renderer / symbology", "layer": title})
 
         if layer.get("popupInfo"):

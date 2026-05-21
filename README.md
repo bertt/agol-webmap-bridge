@@ -300,6 +300,7 @@ The following conditions are checked automatically:
 | `tables[]` present | Webmap level |
 | `mapFloorInfo` present | Webmap level |
 | `renderer` present on layer | Per layer |
+| `layerDefinition.drawingInfo.renderer` present on layer | Per layer |
 | `popupInfo` present on layer | Per layer |
 | `layerDefinition.definitionExpression` set | Per layer |
 | `timeInfo` present on layer | Per layer |
