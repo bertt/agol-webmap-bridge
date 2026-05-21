@@ -275,7 +275,8 @@ def test_detect_unsupported_definition_expression():
         ]
     }
     findings = _detect_unsupported(webmap)
-    assert any(f["feature"] == "Definition expression / filter" and f["layer"] == "Filtered Layer" for f in findings)
+    assert not any(f["feature"] == "Definition expression / filter" for f in findings), \
+        "definitionExpression is now supported and must not appear in unsupported findings"
 
 
 def test_detect_unsupported_nested_group_layer():
@@ -309,6 +310,45 @@ def test_convert_unsupported_features_in_map_config():
     features = [f["feature"] for f in unsupported]
     assert "Bookmarks" in features
     assert "Popup configuration (popupInfo)" in features
+
+
+def test_convert_definition_expression_in_layers_config():
+    """definition_expression must be forwarded in layers_config when present."""
+    webmap = {
+        "operationalLayers": [
+            {
+                "title": "Filtered Layer",
+                "layerType": "ArcGISFeatureLayer",
+                "opacity": 1.0,
+                "visibility": True,
+                "layerDefinition": {"definitionExpression": "MIJLPAAL = 'Afgerond'"},
+            },
+        ],
+        "spatialReference": {"wkid": 4326},
+    }
+    datasets = [{"pk": "1", "title": "Filtered Layer", "name": "filtered_layer", "alternate": "ws:filtered_layer", "default_style": None}]
+    writer = CapturingWriter()
+    map_config = convert(agol_webmap=webmap, geonode_datasets=datasets, writer=writer, threshold=0.5)
+
+    assert len(map_config["layers"]) == 1
+    layer = map_config["layers"][0]
+    assert layer.get("definition_expression") == "MIJLPAAL = 'Afgerond'"
+
+
+def test_convert_no_definition_expression_when_absent():
+    """Layers without definitionExpression must not have definition_expression key."""
+    webmap = {
+        "operationalLayers": [
+            {"title": "Plain Layer", "layerType": "ArcGISFeatureLayer", "opacity": 1.0, "visibility": True},
+        ],
+        "spatialReference": {"wkid": 4326},
+    }
+    datasets = [{"pk": "1", "title": "Plain Layer", "name": "plain_layer", "alternate": "ws:plain_layer", "default_style": None}]
+    writer = CapturingWriter()
+    map_config = convert(agol_webmap=webmap, geonode_datasets=datasets, writer=writer, threshold=0.5)
+
+    layer = map_config["layers"][0]
+    assert "definition_expression" not in layer
 
 
 # ---------------------------------------------------------------------------

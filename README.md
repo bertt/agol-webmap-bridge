@@ -185,6 +185,7 @@ DEBUG agol_webmap_bridge.matcher:   'legger_regionale_kering_vigerend_buitenbesc
 | `baseMap.title` | `abstract` | Stored as `"Basemap: …"` in abstract field |
 | Group layers (`GroupLayer`) | — | Sub-layers are flattened and matched individually |
 | `ArcGISMapServiceLayer` with `layers[]` | `maplayers[]` (flat) | Leaf sublayers are extracted and matched individually; group nodes (`subLayerIds` present) are skipped; opacity/visibility inherited from the service layer |
+| `operationalLayers[].layerDefinition.definitionExpression` | `maplayers[].params.CQL_FILTER` | SQL-like filter expression passed as WMS `CQL_FILTER` parameter |
 
 ### Projection handling
 
@@ -301,7 +302,6 @@ The following conditions are checked automatically:
 | `mapFloorInfo` present | Webmap level |
 | `renderer` present on layer | Per layer |
 | `popupInfo` present on layer | Per layer |
-| `layerDefinition.definitionExpression` set | Per layer |
 | `timeInfo` present on layer | Per layer |
 | `layerDefinition.fields` present on layer | Per layer |
 | Nested `GroupLayer` (> 1 level deep) | Per layer |

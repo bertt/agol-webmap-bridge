@@ -139,9 +139,6 @@ def _detect_unsupported(agol_webmap: dict) -> list[UnsupportedFeature]:
         if layer.get("popupInfo"):
             findings.append({"feature": "Popup configuration (popupInfo)", "layer": title})
 
-        if layer.get("layerDefinition", {}).get("definitionExpression"):
-            findings.append({"feature": "Definition expression / filter", "layer": title})
-
         if layer.get("timeInfo") or layer.get("layerDefinition", {}).get("timeInfo"):
             findings.append({"feature": "Time-aware layer settings", "layer": title})
 
@@ -232,6 +229,8 @@ def convert(
             "opacity": r.agol_layer.get("opacity", 1.0),
             "visibility": r.agol_layer.get("visibility", True),
             **( {"group_title": r.agol_layer["group_title"]} if r.agol_layer.get("group_title") else {} ),
+            **( {"definition_expression": r.agol_layer["layerDefinition"]["definitionExpression"]}
+                if r.agol_layer.get("layerDefinition", {}).get("definitionExpression") else {} ),
         }
         for r in matched
     ]

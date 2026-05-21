@@ -134,6 +134,9 @@ class GeoNodeWriter(BaseWriter):
                 "singleTile": False,
                 "styles": [style] if style else [],
             }
+            definition_expression = layer.get("definition_expression")
+            if definition_expression:
+                entry["params"] = {"CQL_FILTER": definition_expression}
             wms_layers.append(entry)
 
         # MapStore2 renders layers bottom-to-top and shows the TOC top-to-bottom

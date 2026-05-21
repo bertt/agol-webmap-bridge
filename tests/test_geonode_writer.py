@@ -113,8 +113,30 @@ def test_writer_no_style_empty_styles_list(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Group handling
+# CQL_FILTER / definitionExpression
 # ---------------------------------------------------------------------------
+
+def test_writer_cql_filter_added_when_definition_expression_present(tmp_path):
+    layer = _make_layer("1", "Filtered Layer")
+    layer["definition_expression"] = "MIJLPAAL = 'Afgerond'"
+    map_config = {"title": "T", "abstract": "", "srid": "EPSG:4326", "layers": [layer]}
+    writer = GeoNodeWriter(geonode_url="https://geonode.example.com")
+    out = tmp_path / "out.json"
+    writer.write(map_config, out)
+    wms = json.loads(out.read_text())["data"]["map"]["layers"][1]
+
+    assert "params" in wms
+    assert wms["params"]["CQL_FILTER"] == "MIJLPAAL = 'Afgerond'"
+
+
+def test_writer_no_params_when_no_definition_expression(tmp_path):
+    map_config = {"title": "T", "abstract": "", "srid": "EPSG:4326", "layers": [_make_layer("1", "Plain Layer")]}
+    writer = GeoNodeWriter(geonode_url="https://geonode.example.com")
+    out = tmp_path / "out.json"
+    writer.write(map_config, out)
+    wms = json.loads(out.read_text())["data"]["map"]["layers"][1]
+
+    assert "params" not in wms
 
 def test_writer_group_title_used_as_group(tmp_path):
     map_config = {
