@@ -11,7 +11,7 @@ from pathlib import Path
 
 import click
 
-from agol_webmap_bridge.agol_client import AGOLError, fetch_webmap
+from agol_webmap_bridge.agol_client import AGOLError, fetch_app_configuration, fetch_webmap
 from agol_webmap_bridge.converter import convert
 from agol_webmap_bridge.geonode_client import GeoNodeError, fetch_datasets
 from agol_webmap_bridge.writers.geonode_writer import GeoNodeWriter
@@ -34,7 +34,7 @@ def _setup_logging(level: str) -> None:
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
-@click.argument("webmap_guid")
+@click.argument("app_configuration_guid")
 @click.option(
     "--geonode-url", "-g",
     required=True,
@@ -67,7 +67,7 @@ def _setup_logging(level: str) -> None:
     help="Logging verbosity.",
 )
 def main(
-    webmap_guid: str,
+    app_configuration_guid: str,
     geonode_url: str,
     output_dir: str,
     force: bool,
@@ -76,13 +76,24 @@ def main(
 ) -> None:
     """Convert an ArcGIS Online webmap to a GeoNode Map JSON file.
 
-    WEBMAP_GUID is the item GUID of the ArcGIS Online webmap, e.g.
-    8a9a419b704e4e03bb98d9f14226a743.
+    APP_CONFIGURATION_GUID is the item GUID of the ArcGIS Online AppConfiguration,
+    e.g. 2b214417eea74ae9a56119c251ffa960. The AppConfiguration must have
+    type='webmap' and contain a 'webmap' field pointing to the actual webmap GUID.
     """
     _setup_logging(log_level)
     logger = logging.getLogger(__name__)
 
-    # 1. Fetch AGOL webmap
+    # 1. Fetch AppConfiguration and resolve webmap GUID + title
+    click.echo(f"Fetching AppConfiguration {app_configuration_guid} …")
+    try:
+        webmap_title, webmap_guid = fetch_app_configuration(app_configuration_guid)
+    except AGOLError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    click.echo(f"  Title: {webmap_title}")
+    click.echo(f"  Webmap GUID: {webmap_guid}")
+
+    # 2. Fetch AGOL webmap
     click.echo(f"Fetching AGOL webmap {webmap_guid} …")
     try:
         agol_webmap = fetch_webmap(webmap_guid)
@@ -90,12 +101,10 @@ def main(
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
 
-    webmap_title = agol_webmap.get("title", webmap_guid)
-    click.echo(f"  Title: {webmap_title}")
     layer_count = len(agol_webmap.get("operationalLayers", []))
     click.echo(f"  Operational layers: {layer_count}")
 
-    # 2. Fetch GeoNode datasets
+    # 3. Fetch GeoNode datasets
     click.echo(f"Fetching datasets from {geonode_url} …")
     try:
         geonode_datasets = fetch_datasets(geonode_url)
@@ -104,7 +113,7 @@ def main(
         sys.exit(1)
     click.echo(f"  Found {len(geonode_datasets)} datasets.")
 
-    # 3. Determine output path
+    # 4. Determine output path
     slug = _slugify(webmap_title)
     out_path = Path(output_dir) / f"{slug}_geonode.json"
 
@@ -114,7 +123,7 @@ def main(
             click.echo("Aborted.")
             sys.exit(0)
 
-    # 4. Convert
+    # 5. Convert
     writer = GeoNodeWriter(geonode_url=geonode_url)
     map_config = convert(
         agol_webmap=agol_webmap,
@@ -124,7 +133,7 @@ def main(
         webmap_title=webmap_title,
     )
 
-    # 5. Write output
+    # 6. Write output
     writer.write(map_config, out_path)
 
     matched = map_config.get("_matched_count", len(map_config.get("layers", [])))
@@ -134,7 +143,7 @@ def main(
         f"\nOutput written to: {out_path}"
     )
 
-    # 6. Unsupported features report
+    # 7. Unsupported features report
     unsupported: list[dict] = map_config.get("_unsupported_features", [])
     if unsupported:
         click.echo("\n⚠  Unsupported AGOL features detected (not converted):")

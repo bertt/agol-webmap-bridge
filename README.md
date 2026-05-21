@@ -1,9 +1,9 @@
 # agol-webmap-bridge
 
-A Python CLI tool that converts an **ArcGIS Online (AGOL) webmap** configuration into a
-**GeoNode Map JSON** file.  The tool fetches the webmap definition from the AGOL REST API,
-retrieves all available datasets from a GeoNode instance, matches operational layers by name,
-and writes the resulting GeoNode Map JSON to disk.
+A Python CLI tool that converts an **ArcGIS Online (AGOL) AppConfiguration** into a
+**GeoNode Map JSON** file.  The tool fetches the AppConfiguration from the AGOL REST API,
+resolves the referenced webmap, retrieves all available datasets from a GeoNode instance,
+matches operational layers by name, and writes the resulting GeoNode Map JSON to disk.
 
 The converter is built on a pluggable writer abstraction so that support for additional output
 formats (QGIS project, Mapbox GL JSON, …) can be added with minimal effort in the future.
@@ -31,7 +31,9 @@ formats (QGIS project, Mapbox GL JSON, …) can be added with minimal effort in 
 
 ## Features
 
-- Fetches an AGOL webmap by item GUID via the public REST API.
+- Fetches an AGOL AppConfiguration by item GUID via the public REST API, validates
+  that it is of type `webmap`, extracts the title and webmap GUID, and then fetches
+  the actual webmap.
 - Paginates the GeoNode `/api/v2/datasets/` endpoint to retrieve all available datasets.
 - Matches each AGOL operational layer to the most suitable GeoNode dataset using
   fuzzy name comparison (`difflib.SequenceMatcher`).  The search term is derived
@@ -75,13 +77,13 @@ pip install -e ".[dev]"
 ## Usage
 
 ```bash
-agol-webmap-bridge WEBMAP_GUID --geonode-url GEONODE_URL [OPTIONS]
+agol-webmap-bridge APP_CONFIGURATION_GUID --geonode-url GEONODE_URL [OPTIONS]
 ```
 
 **Example:**
 
 ```bash
-agol-webmap-bridge 8a9a419b704e4e03bb98d9f14226a743 \
+agol-webmap-bridge 2b214417eea74ae9a56119c251ffa960 \
   --geonode-url https://your-geonode.example.com \
   --output-dir output \
   --match-threshold 0.6
@@ -89,9 +91,11 @@ agol-webmap-bridge 8a9a419b704e4e03bb98d9f14226a743 \
 
 This will:
 
-1. Fetch the webmap at `https://www.arcgis.com/sharing/rest/content/items/8a9a419b704e4e03bb98d9f14226a743/data`
-2. Fetch all datasets from `https://your-geonode.example.com/api/v2/datasets/`
-3. Match layers by name and write the result to `output/<webmap-title>_geonode.json`
+1. Fetch the AppConfiguration at `https://www.arcgis.com/sharing/rest/content/items/2b214417eea74ae9a56119c251ffa960/data`
+2. Validate that `type == "webmap"`, extract the title and webmap GUID (e.g. `8a9a419b704e4e03bb98d9f14226a743`)
+3. Fetch the webmap at `https://www.arcgis.com/sharing/rest/content/items/8a9a419b704e4e03bb98d9f14226a743/data`
+4. Fetch all datasets from `https://your-geonode.example.com/api/v2/datasets/`
+5. Match layers by name and write the result to `output/<webmap-title>_geonode.json`
 
 ---
 
@@ -99,7 +103,7 @@ This will:
 
 | Option | Short | Default | Description |
 |---|---|---|---|
-| `WEBMAP_GUID` | — | *(required)* | AGOL item GUID of the webmap |
+| `APP_CONFIGURATION_GUID` | — | *(required)* | AGOL item GUID of the AppConfiguration |
 | `--geonode-url` | `-g` | *(required)* | Base URL of the GeoNode instance |
 | `--output-dir` | `-o` | `output` | Directory to write the output JSON file |
 | `--force` | `-f` | off | Overwrite existing output without prompting |
