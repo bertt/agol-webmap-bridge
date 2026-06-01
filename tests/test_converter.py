@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from agol_webmap_bridge.converter import _wkid_to_epsg, _extract_extent, _extract_service_sublayers, _flatten_layers, _detect_unsupported, convert
+from agol_webmap_bridge.matcher import _extract_url_service_name
 from agol_webmap_bridge.writers.base_writer import BaseWriter
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -56,6 +57,7 @@ def test_convert_with_fixture():
         writer=writer,
         threshold=0.5,
         webmap_title="Test Map",
+        _fetch_layer_name_fn=_extract_url_service_name,
     )
 
     assert map_config["title"] == "Test Map"
@@ -70,7 +72,13 @@ def test_convert_preserves_opacity_and_visibility():
     datasets = load_fixture("geonode_datasets_sample.json")["datasets"]
 
     writer = CapturingWriter()
-    map_config = convert(agol_webmap=agol_webmap, geonode_datasets=datasets, writer=writer, threshold=0.5)
+    map_config = convert(
+        agol_webmap=agol_webmap,
+        geonode_datasets=datasets,
+        writer=writer,
+        threshold=0.5,
+        _fetch_layer_name_fn=_extract_url_service_name,
+    )
 
     # Woningbouwlocaties layer has opacity 0.8
     woning_layer = next(
@@ -87,7 +95,13 @@ def test_convert_basemap_in_abstract():
     datasets = load_fixture("geonode_datasets_sample.json")["datasets"]
 
     writer = CapturingWriter()
-    map_config = convert(agol_webmap=agol_webmap, geonode_datasets=datasets, writer=writer, threshold=0.5)
+    map_config = convert(
+        agol_webmap=agol_webmap,
+        geonode_datasets=datasets,
+        writer=writer,
+        threshold=0.5,
+        _fetch_layer_name_fn=_extract_url_service_name,
+    )
     assert "OpenStreetMap" in map_config["abstract"]
 
 
@@ -98,7 +112,14 @@ def test_convert_group_layer_flattened():
                 "id": "group1",
                 "layerType": "GroupLayer",
                 "layers": [
-                    {"id": "sub1", "title": "Woningbouwlocaties", "opacity": 1.0, "visibility": True, "layerType": "ArcGISFeatureLayer"},
+                    {
+                        "id": "sub1",
+                        "title": "Woningbouwlocaties",
+                        "url": "https://example.com/arcgis/rest/services/Wonen/woningbouwlocaties/MapServer/0",
+                        "opacity": 1.0,
+                        "visibility": True,
+                        "layerType": "ArcGISFeatureLayer",
+                    },
                 ],
             }
         ],
@@ -107,7 +128,13 @@ def test_convert_group_layer_flattened():
     datasets = [{"pk": "1", "title": "Woningbouwlocaties", "name": "woningbouwlocaties", "alternate": "hhr:woningbouwlocaties", "default_style": None}]
 
     writer = CapturingWriter()
-    map_config = convert(agol_webmap=agol_webmap, geonode_datasets=datasets, writer=writer, threshold=0.6)
+    map_config = convert(
+        agol_webmap=agol_webmap,
+        geonode_datasets=datasets,
+        writer=writer,
+        threshold=0.6,
+        _fetch_layer_name_fn=_extract_url_service_name,
+    )
     assert len(map_config["layers"]) == 1
     assert map_config["layers"][0]["geonode_dataset"]["pk"] == "1"
 
@@ -180,7 +207,13 @@ def test_convert_service_sublayers_group_node_not_in_output():
         {"pk": "12", "title": "Regionale kering as", "name": "regionale_kering_as", "alternate": "ws:regionale_kering_as", "default_style": None},
     ]
     writer = CapturingWriter()
-    map_config = convert(agol_webmap=agol_webmap, geonode_datasets=datasets, writer=writer, threshold=0.5)
+    map_config = convert(
+        agol_webmap=agol_webmap,
+        geonode_datasets=datasets,
+        writer=writer,
+        threshold=0.5,
+        _fetch_layer_name_fn=_extract_url_service_name,
+    )
 
     titles = [l["geonode_dataset"]["title"] for l in map_config["layers"]]
     assert "Regionale kering zone" not in titles
@@ -195,7 +228,13 @@ def test_convert_service_sublayers_opacity_preserved():
         {"pk": "10", "title": "Kernzone", "name": "kernzone", "alternate": "ws:kernzone", "default_style": None},
     ]
     writer = CapturingWriter()
-    map_config = convert(agol_webmap=agol_webmap, geonode_datasets=datasets, writer=writer, threshold=0.5)
+    map_config = convert(
+        agol_webmap=agol_webmap,
+        geonode_datasets=datasets,
+        writer=writer,
+        threshold=0.5,
+        _fetch_layer_name_fn=_extract_url_service_name,
+    )
 
     kernzone_layer = next((l for l in map_config["layers"] if l["geonode_dataset"]["title"] == "Kernzone"), None)
     assert kernzone_layer is not None
@@ -325,7 +364,12 @@ def test_convert_unsupported_features_in_map_config():
         "spatialReference": {"wkid": 4326},
     }
     writer = CapturingWriter()
-    map_config = convert(agol_webmap=webmap, geonode_datasets=[], writer=writer)
+    map_config = convert(
+        agol_webmap=webmap,
+        geonode_datasets=[],
+        writer=writer,
+        _fetch_layer_name_fn=lambda url: "",
+    )
     unsupported = map_config["_unsupported_features"]
     features = [f["feature"] for f in unsupported]
     assert "Bookmarks" in features
@@ -439,7 +483,13 @@ def test_convert_nested_groups_fixture():
         {"pk": "4", "title": "Grens Rijnland", "name": "grens_rijnland", "alternate": "ws:grens_rijnland", "default_style": None},
     ]
     writer = CapturingWriter()
-    map_config = convert(agol_webmap=agol_webmap, geonode_datasets=datasets, writer=writer, threshold=0.5)
+    map_config = convert(
+        agol_webmap=agol_webmap,
+        geonode_datasets=datasets,
+        writer=writer,
+        threshold=0.5,
+        _fetch_layer_name_fn=_extract_url_service_name,
+    )
 
     by_title = {l["geonode_dataset"]["title"]: l for l in map_config["layers"]}
 

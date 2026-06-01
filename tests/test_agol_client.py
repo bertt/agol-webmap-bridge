@@ -10,6 +10,7 @@ from agol_webmap_bridge.agol_client import (
     AGOL_BASE_URL,
     detect_and_fetch_webmap,
     fetch_app_configuration,
+    fetch_layer_name,
     fetch_webmap,
 )
 
@@ -155,3 +156,36 @@ def test_fetch_webmap_success(requests_mock):
     requests_mock.get(f"{AGOL_BASE_URL}/{WEBMAP_GUID}/data", json=WEBMAP_DATA)
     data = fetch_webmap(WEBMAP_GUID)
     assert data["title"] == "My Webmap"
+
+
+# ---------------------------------------------------------------------------
+# fetch_layer_name
+# ---------------------------------------------------------------------------
+
+LAYER_URL = "https://example.com/arcgis/rest/services/Gebied/Grens_Rijnland/MapServer/0"
+
+
+def test_fetch_layer_name_returns_name_field(requests_mock):
+    requests_mock.get(LAYER_URL, json={"name": "Grens_Rijnland", "type": "Feature Layer"})
+    assert fetch_layer_name(LAYER_URL) == "Grens_Rijnland"
+
+
+def test_fetch_layer_name_empty_string_when_no_name_field(requests_mock):
+    requests_mock.get(LAYER_URL, json={"type": "Feature Layer"})
+    assert fetch_layer_name(LAYER_URL) == ""
+
+
+def test_fetch_layer_name_empty_string_on_http_error(requests_mock):
+    requests_mock.get(LAYER_URL, status_code=500)
+    assert fetch_layer_name(LAYER_URL) == ""
+
+
+def test_fetch_layer_name_empty_string_for_blank_url():
+    assert fetch_layer_name("") == ""
+
+
+def test_fetch_layer_name_empty_string_on_connection_error(requests_mock):
+    import requests as req_lib
+    requests_mock.get(LAYER_URL, exc=req_lib.ConnectionError("refused"))
+    assert fetch_layer_name(LAYER_URL) == ""
+

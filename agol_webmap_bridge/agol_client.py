@@ -2,14 +2,42 @@
 
 from __future__ import annotations
 
+import logging
+
 import requests
 
+logger = logging.getLogger(__name__)
 
 AGOL_BASE_URL = "https://www.arcgis.com/sharing/rest/content/items"
 
 
 class AGOLError(Exception):
     """Raised when the AGOL API call fails."""
+
+
+def fetch_layer_name(url: str) -> str:
+    """Fetch the layer name from an ArcGIS REST service endpoint.
+
+    Calls ``GET <url>?f=json`` and returns the ``name`` field from the
+    response.  Returns an empty string when the URL is blank, the request
+    fails, or the response contains no ``name`` field.
+
+    Args:
+        url: Full URL of an ArcGIS REST layer or service endpoint.
+
+    Returns:
+        The ``name`` value reported by the service, or ``""`` on any error.
+    """
+    if not url:
+        return ""
+    try:
+        response = requests.get(url, params={"f": "json"}, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("name", "") or ""
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not fetch layer name from '%s': %s", url, exc)
+        return ""
 
 
 def _fetch_item_data(guid: str) -> dict:

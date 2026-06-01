@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
-from typing import TypedDict
+from typing import Callable, TypedDict
 
+from agol_webmap_bridge.agol_client import fetch_layer_name as _default_fetch_layer_name
 from agol_webmap_bridge.matcher import MatchResult, match_layers
 from agol_webmap_bridge.writers.base_writer import BaseWriter
 
@@ -201,6 +202,7 @@ def convert(
     writer: BaseWriter,
     threshold: float = 0.6,
     webmap_title: str = "",
+    _fetch_layer_name_fn: Callable[[str], str] | None = None,
 ) -> dict:
     """Convert an AGOL webmap to an intermediate map config and pass it to *writer*.
 
@@ -210,14 +212,28 @@ def convert(
         writer: A :class:`~agol_webmap_bridge.writers.base_writer.BaseWriter` instance.
         threshold: Name-matching similarity threshold (0–1).
         webmap_title: Human-readable title (sourced from AGOL item metadata).
+        _fetch_layer_name_fn: Optional callable ``(url) -> name`` used to
+            retrieve a layer's name from its ArcGIS REST endpoint.  Defaults
+            to :func:`~agol_webmap_bridge.agol_client.fetch_layer_name`.
+            Pass a custom function in tests to avoid real HTTP calls.
 
     Returns:
         The intermediate ``map_config`` dict (useful for testing / inspection).
     """
+    fetch_fn: Callable[[str], str] = _fetch_layer_name_fn or _default_fetch_layer_name
+
     agol_layers = agol_webmap.get("operationalLayers", [])
 
     # Recursively flatten group/service layers, tagging each with its group path
     flat_layers = _flatten_layers(agol_layers)
+
+    # Enrich each leaf layer that has its own URL: fetch the ArcGIS REST name
+    for layer in flat_layers:
+        url = layer.get("url", "")
+        if url:
+            name = fetch_fn(url)
+            if name:
+                layer["_fetched_name"] = name
 
     match_results: list[MatchResult] = match_layers(flat_layers, geonode_datasets, threshold)
 

@@ -61,23 +61,29 @@ def _extract_url_service_name(url: str) -> str:
 def _agol_layer_candidates(layer: dict) -> list[str]:
     """Return candidate names for an AGOL layer.
 
-    When a layer has its own ``url``, the service name extracted from it is
-    used as the sole search term, preserved with underscores (exact lowercase)
-    so it matches GeoNode ``name`` values verbatim.
+    Priority order:
+    1. ``_fetched_name`` — name retrieved from the ArcGIS REST endpoint by the
+       converter; used as the sole search term (exact lowercase).
+    2. Own ``url`` — service name extracted from the layer URL string as a
+       fallback when no pre-fetched name is available.
+    3. ``_parent_url`` (sublayers) — parent service name combined with the
+       sublayer title: ``<parent>_<title>``.
 
-    Sublayers (no ``url``, only ``_parent_url``) combine the parent service
-    name with the sublayer title joined by an underscore, e.g.
-    ``Legger_regionale_kering_vigerend`` + ``Buitenbeschermingszone``
-    → ``legger_regionale_kering_vigerend_buitenbeschermingszone``.
-
-    Layers without any URL fall back to normalised title / id.
+    Layers with no URL and no ``_fetched_name`` return an empty list and will
+    be skipped (no title / id fallback).
     """
+    # Priority 1: pre-fetched name from ArcGIS REST API
+    fetched = layer.get("_fetched_name", "")
+    if fetched:
+        return [_normalise_exact(fetched)]
+
+    # Priority 2: extract service name from own URL
     url = layer.get("url") or ""
     service_name = _extract_url_service_name(url)
     if service_name:
         return [_normalise_exact(service_name)]
 
-    # Sublayer: has _parent_url but no own url — combine service name + title
+    # Priority 3: sublayer with _parent_url — combine service name + title
     parent_url = layer.get("_parent_url") or ""
     parent_service = _extract_url_service_name(parent_url)
     if parent_service:
@@ -86,13 +92,24 @@ def _agol_layer_candidates(layer: dict) -> list[str]:
         if title_exact:
             return [_normalise_exact(f"{parent_service}_{title_exact}")]
 
-    # Last fallback: no URL at all — use normalised title / id
-    candidates: list[str] = []
-    for field in ("title", "id"):
-        raw = layer.get(field) or ""
-        if raw:
-            candidates.append(_normalise(raw))
-    return [c for c in candidates if c]
+    # No URL available — return empty list, layer will be skipped
+    return []
+
+
+def _suffix_score(layer_cand: str, ds_cand: str) -> float:
+    """Return 1.0 if *layer_cand* is a word-boundary suffix of *ds_cand*.
+
+    GeoNode dataset names are sometimes prefixed with a workspace slug, e.g.
+    ``hhsk_op_de_kaart_werk_in_uitvoering_werk_in_uitvoering_vlakken``.  When
+    the AGOL layer name ``werk_in_uitvoering_vlakken`` is a suffix of that
+    string AND is preceded by an underscore (word boundary), it is a reliable
+    match even though the raw SequenceMatcher ratio falls below the threshold.
+    """
+    if layer_cand and ds_cand.endswith(layer_cand):
+        prefix_len = len(ds_cand) - len(layer_cand)
+        if prefix_len == 0 or ds_cand[prefix_len - 1] == "_":
+            return 1.0
+    return 0.0
 
 
 def _candidate_names(dataset: dict) -> list[str]:
@@ -102,8 +119,10 @@ def _candidate_names(dataset: dict) -> list[str]:
     - exact lowercase (underscores preserved) for matching URL service names
     - fully normalised (underscores → spaces) for fuzzy title matching
 
-    Only ``name`` and ``alternate`` are used; ``title`` is excluded because it
-    is free-form while ``name`` / ``alternate`` are stable identifiers.
+    ``name`` and ``alternate`` are stable identifiers; ``title`` is included as
+    an additional candidate because GeoNode titles often mirror the layer name
+    (e.g. ``Werk_in_uitvoering_vlakken``) and enable a direct match when the
+    ``name`` field carries a long workspace-prefixed slug.
     """
     names: list[str] = []
     for field in ("name", "alternate"):
@@ -114,6 +133,10 @@ def _candidate_names(dataset: dict) -> list[str]:
         part = raw.split(":", 1)[1] if ":" in raw else raw
         names.append(_normalise_exact(part))   # e.g. grens_rijnland_formeel_mask
         names.append(_normalise(part))          # e.g. grens rijnland formeel mask
+    # Include title as an extra candidate (exact lowercase only)
+    title = dataset.get("title") or ""
+    if title:
+        names.append(_normalise_exact(title))
     return [n for n in names if n]
 
 
@@ -150,7 +173,10 @@ def match_layers(
         for ds, ds_candidates in dataset_candidates:
             for layer_cand in layer_candidates:
                 for ds_cand in ds_candidates:
-                    score = difflib.SequenceMatcher(None, layer_cand, ds_cand).ratio()
+                    score = max(
+                        difflib.SequenceMatcher(None, layer_cand, ds_cand).ratio(),
+                        _suffix_score(layer_cand, ds_cand),
+                    )
                     logger.debug(
                         "  '%s' vs '%s' (dataset '%s') → %.2f",
                         layer_cand, ds_cand, ds.get("name"), score,

@@ -37,10 +37,11 @@ formats (QGIS project, Mapbox GL JSON, …) can be added with minimal effort in 
   `webmap`, extracts the title and webmap GUID, and then fetches the actual webmap.
   When a direct webmap GUID is provided, the AppConfiguration step is skipped.
 - Paginates the GeoNode `/api/v2/datasets/` endpoint to retrieve all available datasets.
-- Matches each AGOL operational layer to the most suitable GeoNode dataset using
-  fuzzy name comparison (`difflib.SequenceMatcher`).  The search term is derived
-  from the layer URL (see [Layer matching logic](#layer-matching-logic)).
-  Unmatched layers are skipped with a warning log message.
+- For each AGOL operational layer with a URL, calls `GET <url>?f=json` against the
+  ArcGIS REST API and uses the returned `name` property as the search term.
+  Sublayers (no own URL) derive their search term from the parent service name plus
+  sublayer title.  Layers without any URL are skipped with a warning.
+  The search term is compared (case-insensitively) against the GeoNode `name` field.
 - Produces a GeoNode-compatible Map JSON file that can be directly POSTed to the
   GeoNode Maps API.
 - Meaningful output filename derived from the webmap title (slugified).
@@ -134,8 +135,8 @@ This will:
 ## Layer matching logic
 
 The tool resolves each AGOL operational layer to a GeoNode dataset by deriving a
-**search term from the layer URL** and comparing it (case-insensitively, underscores
-preserved) against the GeoNode `name` field of every dataset.
+**name from the layer's ArcGIS REST endpoint** and comparing it (case-insensitively,
+underscores preserved) against the GeoNode `name` field of every dataset.
 
 ### Regular layers
 
@@ -145,7 +146,14 @@ For a layer whose URL is:
 https://rijnland.enl-mcs.nl/arcgis/rest/services/Gebied/my_layer/MapServer/0
 ```
 
-the segment immediately before `/MapServer` (or `/FeatureServer`, etc.) is extracted:
+the tool calls `GET <url>?f=json` against the ArcGIS REST API and reads the `name`
+property from the JSON response:
+
+```json
+{ "name": "my_layer", "type": "Feature Layer", ... }
+```
+
+The returned `name` is then used as the search term (exact lowercase match):
 
 ```
 my_layer   →   search term: my_layer
@@ -158,6 +166,10 @@ This is compared against `name` values in GeoNode, e.g.:
 | `my_layer` | ✅ score 1.00 |
 | `My_Layer` | ✅ score 1.00 (case-insensitive) |
 | `other_layer` | ❌ score too low |
+
+If the REST call fails (network error, timeout, etc.) the tool falls back to
+extracting the service name from the URL string itself, keeping behaviour
+predictable when services are unreachable during conversion.
 
 ### Sublayers (ArcGISMapServiceLayer)
 
@@ -174,10 +186,10 @@ the sublayer title replaced by underscores:
 The expected GeoNode dataset `name` for these layers therefore follows the pattern
 `<ParentService>_<SublayerTitle>`, e.g. `Legger_regionale_kering_vigerend_Buitenbeschermingszone`.
 
-### Fallback
+### Layers without a URL
 
-Layers with no URL (and no parent URL) are matched on their `title` field using
-standard fuzzy matching.
+Layers that have no URL (and no parent URL) are **skipped** with a warning log
+message — no title-based fallback is applied.
 
 ### Logging
 
@@ -195,7 +207,7 @@ DEBUG agol_webmap_bridge.matcher:   'legger_regionale_kering_vigerend_buitenbesc
 | AGOL property | Maps to GeoNode field | Notes |
 |---|---|---|
 | `title` (item metadata) | `title` | Passed via `--webmap-title` or taken from the webmap JSON |
-| `operationalLayers[].title` | `maplayers[].dataset.title` | Matched fuzzy to GeoNode dataset name |
+| `operationalLayers[].title` | `maplayers[].dataset.title` | Layer name fetched from ArcGIS REST endpoint (`?f=json`) and matched to GeoNode `name` |
 | `operationalLayers[].opacity` | `maplayers[].opacity` | 0–1 float preserved |
 | `operationalLayers[].visibility` | `maplayers[].visibility` | Boolean preserved |
 | `initialState.viewpoint.targetGeometry` | `extent` | `[xmin, ymin, xmax, ymax]` |
