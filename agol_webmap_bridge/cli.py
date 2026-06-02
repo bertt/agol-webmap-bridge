@@ -133,6 +133,7 @@ def main(
         writer=writer,
         threshold=match_threshold,
         webmap_title=webmap_title,
+        webmap_slug=slug,
     )
 
     # 6. Write output
@@ -144,6 +145,12 @@ def main(
         f"\nDone: {matched} layer(s) matched, {skipped} layer(s) skipped."
         f"\nOutput written to: {out_path}"
     )
+
+    sld_count = map_config.get("_sld_count", 0)
+    if sld_count:
+        upload_script = Path(output_dir) / f"upload_{slug}.sh"
+        click.echo(f"\n✓  {sld_count} SLD style(s) generated.")
+        click.echo(f"   Upload script: {upload_script}")
 
     # 7. Unsupported features report
     unsupported: list[dict] = map_config.get("_unsupported_features", [])

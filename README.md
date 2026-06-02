@@ -20,6 +20,10 @@ formats (QGIS project, Mapbox GL JSON, …) can be added with minimal effort in 
 - [Supported AGOL webmap properties](#supported-agol-webmap-properties)
   - [Projection handling](#projection-handling)
   - [Group layer handling](#group-layer-handling)
+- [Symbology conversion](#symbology-conversion)
+  - [Supported symbology features](#supported-symbology-features)
+  - [Unsupported symbology features](#unsupported-symbology-features)
+  - [Upload script](#upload-script)
 - [Unsupported / future properties](#unsupported--future-properties)
   - [Unsupported features report](#unsupported-features-report)
 - [How to POST the result to GeoNode](#how-to-post-the-result-to-geonode)
@@ -44,6 +48,10 @@ formats (QGIS project, Mapbox GL JSON, …) can be added with minimal effort in 
   The search term is compared (case-insensitively) against the GeoNode `name` field.
 - Produces a GeoNode-compatible Map JSON file that can be directly POSTed to the
   GeoNode Maps API.
+- **Translates AGOL renderer JSON to SLD files** — one `.sld` per matched layer with
+  a renderer; the style name is automatically set in the output JSON.
+- Generates a bash upload script (`upload_<slug>.sh`) to push SLD styles to GeoServer
+  and the map JSON to GeoNode in one step.
 - Meaningful output filename derived from the webmap title (slugified).
 - Prompts before overwriting an existing output file; `--force` skips the prompt.
 - Configurable output directory and matching threshold.
@@ -282,6 +290,75 @@ The GeoNode layers panel (TOC) mirrors the display order of the original AGOL we
 
 ---
 
+## Symbology conversion
+
+For every matched layer that carries AGOL renderer JSON (`drawingInfo.renderer` or a
+top-level `renderer` key), the tool generates an **SLD (Styled Layer Descriptor)** file
+and stores the style name in the output GeoNode JSON.
+
+### Generated files
+
+| File | Description |
+|---|---|
+| `output/<webmap_slug>_<layer_slug>.sld` | SLD style for one layer |
+| `output/upload_<webmap_slug>.sh` | Bash upload script (only when ≥ 1 SLD generated) |
+
+The `<layer_slug>` is derived from the GeoNode dataset `alternate` field
+(e.g. `hhsk:Waterschapsgrens_HHSK` → `hhsk_waterschapsgrens_hhsk`).  The style name
+stored in the JSON `styles` array matches the SLD file stem.
+
+### Supported symbology features
+
+| Feature | Notes |
+|---|---|
+| `simple` renderer | Single symbol applied to all features |
+| `uniqueValue` renderer | Per-value OGC `PropertyIsEqualTo` filter rules; up to 3 classification fields; optional `ElseFilter` rule for the default symbol |
+| `classBreaks` renderer | Numeric range rules using `PropertyIsGreaterThan` / `PropertyIsLessThanOrEqualTo` |
+| `esriSFS` — solid polygon fill | Fill colour + optional outline |
+| `esriSFS` — hatch fills | Mapped to GeoServer `shape://` well-known marks (`hatching`, `times`, `slash`, etc.) |
+| `esriSLS` — line symbol | Colour, width, and standard dash styles (`esriSLSDash`, `esriSLSDot`, `esriSLSDashDot`, `esriSLSDashDotDot`) |
+| `esriSMS` — simple marker symbol | Circle, square, cross, x, diamond marks |
+| `esriPMS` — picture marker symbol | Falls back to a circle (no image extraction) |
+| `esriPFS` — picture fill symbol | Falls back to a solid colour fill |
+| Transparency / alpha | ESRI `color[3]` value (0–255) mapped to `fill-opacity` / `stroke-opacity` |
+| Scale denominators | `minScale` / `maxScale` → `MinScaleDenominator` / `MaxScaleDenominator` |
+| Labels (`labelingInfo`) | Single or multi-field expressions, font family/size/weight/style, colour, and halo |
+
+### Unsupported symbology features
+
+| Feature | Behaviour |
+|---|---|
+| `esriPMS` image extraction | No binary image files are written; symbol falls back to a solid circle |
+| `esriPFS` tiled image fills | No image extraction; falls back to solid colour fill |
+| `dotDensity` renderer | Skipped — returns `None` (no SLD equivalent) |
+| `heatmap` renderer | Skipped — returns `None` |
+| `temporal` / 3D symbols | Skipped |
+| Complex ArcGIS SQL `where` clauses in label classes | Labels are applied globally per rule; `where` filters on label classes are not reproduced |
+| Custom dash arrays beyond the five standard ESRI styles | Approximated using the nearest standard dash pattern |
+
+### Upload script
+
+When at least one SLD file is generated, the tool writes a bash script
+`output/upload_<webmap_slug>.sh`.  Run it from the `output` directory, passing the
+GeoNode URL and a Bearer token as positional arguments:
+
+```bash
+cd output
+bash upload_<webmap_slug>.sh https://your-geonode.example.com <user> <password> <token>
+```
+
+The script:
+
+1. POSTs each `.sld` file to `/geoserver/rest/styles?name=<style_name>` using the GeoServer REST API
+   with HTTP Basic Auth (`-u user:password`).
+2. POSTs the `<webmap_slug>_geonode.json` to `/api/v2/maps/` using `Authorization: Bearer <token>`.
+
+> **Note** — The SLD styles must exist in GeoServer **before** the map JSON is
+> imported into GeoNode so that GeoNode can resolve the style references.  The upload
+> script handles this order automatically.
+
+---
+
 ## Unsupported / future properties
 
 The following AGOL webmap features are **not yet converted**.  They are ignored silently
@@ -290,7 +367,7 @@ or noted in comments.  Contributions or later phases may add support for them.
 | AGOL feature | Status |
 |---|---|
 | Basemap layer references | Not converted; title stored in abstract only |
-| Renderer / symbology (JSON) | Not converted |
+| Renderer / symbology (JSON) | ✅ Converted to SLD (see [Symbology conversion](#symbology-conversion)) |
 | Popup configuration (`popupInfo`) | Not converted |
 | Field configurations | Not converted |
 | Bookmarks | Not converted |
@@ -311,7 +388,6 @@ report of any unsupported features it found, together with the layer they belong
 ```
 ⚠  Unsupported AGOL features detected (not converted):
    • Bookmarks  [webmap level]
-   • Renderer / symbology  [layer: Grens Rijnland]
    • Popup configuration (popupInfo)  [layer: Woningbouwlocaties]
    • Time-aware layer settings  [layer: Woningbouwlocaties]
 ```
@@ -329,8 +405,6 @@ The following conditions are checked automatically:
 | `bookmarks` present | Webmap level |
 | `tables[]` present | Webmap level |
 | `mapFloorInfo` present | Webmap level |
-| `renderer` present on layer | Per layer |
-| `layerDefinition.drawingInfo.renderer` present on layer | Per layer |
 | `popupInfo` present on layer | Per layer |
 | `layerDefinition.definitionExpression` set | Per layer |
 | `timeInfo` present on layer | Per layer |
@@ -419,7 +493,6 @@ All tests use mocked HTTP responses via `requests-mock`; no network access is re
 
 - **Direct GeoNode upload** (`--upload` flag): POST the generated JSON to the GeoNode API automatically.
 - **Authenticated AGOL access**: support private webmaps using an AGOL token (`--agol-token`).
-- **Symbology conversion**: translate AGOL renderer JSON to SLD/GeoServer styles.
 - **QGIS project writer**: write a `.qgs` / `.qgz` project file.
 - **Mapbox GL JSON writer**: produce a Mapbox-compatible style document.
 - **Basemap conversion**: map AGOL basemap IDs to OSM/XYZ tile URLs.

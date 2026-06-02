@@ -98,6 +98,36 @@ def _extract_service_sublayers(layer: dict) -> list[dict]:
     return leaf_layers if leaf_layers else [layer]
 
 
+_ESRI_GEOMETRY_TYPE_MAP: dict[str, str] = {
+    "esrigeometrypoint": "Point",
+    "esrigeometrymultipoint": "Point",
+    "esrigeometrypolyline": "Line",
+    "esrigeometrypolygon": "Polygon",
+    "esrigeometryenvelope": "Polygon",
+}
+
+
+def _extract_renderer(layer: dict) -> dict | None:
+    """Return the ESRI renderer dict from an AGOL layer, or ``None``."""
+    # layerDefinition.drawingInfo.renderer takes precedence
+    drawing_info = layer.get("layerDefinition", {}).get("drawingInfo", {})
+    renderer = drawing_info.get("renderer")
+    if renderer:
+        return renderer
+    return layer.get("renderer") or None
+
+
+def _extract_geometry_type(layer: dict) -> str | None:
+    """Return a normalised geometry type string (``"Point"``, ``"Line"``,
+    ``"Polygon"``) from an AGOL layer dict, or ``None`` if unknown."""
+    raw = (
+        layer.get("layerDefinition", {}).get("geometryType")
+        or layer.get("geometryType")
+        or ""
+    )
+    return _ESRI_GEOMETRY_TYPE_MAP.get(str(raw).lower())
+
+
 def _detect_unsupported(agol_webmap: dict) -> list[UnsupportedFeature]:
     """Scan *agol_webmap* for features that are not converted and return a report.
 
@@ -133,10 +163,6 @@ def _detect_unsupported(agol_webmap: dict) -> list[UnsupportedFeature]:
 
     for layer in all_layers:
         title: str | None = layer.get("title") or None
-
-        drawing_info = layer.get("layerDefinition", {}).get("drawingInfo", {})
-        if layer.get("renderer") or drawing_info.get("renderer"):
-            findings.append({"feature": "Renderer / symbology", "layer": title})
 
         if layer.get("popupInfo"):
             findings.append({"feature": "Popup configuration (popupInfo)", "layer": title})
@@ -202,6 +228,7 @@ def convert(
     writer: BaseWriter,
     threshold: float = 0.6,
     webmap_title: str = "",
+    webmap_slug: str = "",
     _fetch_layer_name_fn: Callable[[str], str] | None = None,
 ) -> dict:
     """Convert an AGOL webmap to an intermediate map config and pass it to *writer*.
@@ -212,6 +239,8 @@ def convert(
         writer: A :class:`~agol_webmap_bridge.writers.base_writer.BaseWriter` instance.
         threshold: Name-matching similarity threshold (0–1).
         webmap_title: Human-readable title (sourced from AGOL item metadata).
+        webmap_slug: Filesystem-safe slug derived from *webmap_title* or GUID.
+            Used to name SLD output files.
         _fetch_layer_name_fn: Optional callable ``(url) -> name`` used to
             retrieve a layer's name from its ArcGIS REST endpoint.  Defaults
             to :func:`~agol_webmap_bridge.agol_client.fetch_layer_name`.
@@ -249,6 +278,9 @@ def convert(
             "opacity": r.agol_layer.get("opacity", 1.0),
             "visibility": r.agol_layer.get("visibility", True),
             **( {"group_title": r.agol_layer["group_title"]} if r.agol_layer.get("group_title") else {} ),
+            "agol_title": r.agol_layer.get("title", ""),
+            "renderer": _extract_renderer(r.agol_layer),
+            "geometry_type": _extract_geometry_type(r.agol_layer),
         }
         for r in matched
     ]
@@ -270,6 +302,7 @@ def convert(
         "srid": _wkid_to_epsg(wkid),
         "extent": _extract_extent(agol_webmap),
         "layers": layers_config,
+        "_webmap_slug": webmap_slug,
         "_matched_count": len(matched),
         "_skipped_count": len(skipped),
         "_unsupported_features": _detect_unsupported(agol_webmap),

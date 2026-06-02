@@ -270,6 +270,7 @@ def test_detect_unsupported_mapfloorinfo():
 
 
 def test_detect_unsupported_renderer_on_layer():
+    """Renderer is now converted to SLD — it should NOT appear in unsupported features."""
     webmap = {
         "operationalLayers": [
             {"title": "My Layer", "renderer": {"type": "simple"}, "layerType": "ArcGISFeatureLayer"},
@@ -277,12 +278,11 @@ def test_detect_unsupported_renderer_on_layer():
     }
     findings = _detect_unsupported(webmap)
     match = next((f for f in findings if f["feature"] == "Renderer / symbology"), None)
-    assert match is not None
-    assert match["layer"] == "My Layer"
+    assert match is None
 
 
 def test_detect_unsupported_drawing_info_renderer_on_layer():
-    """drawingInfo.renderer inside layerDefinition must be detected (real AGOL structure)."""
+    """drawingInfo.renderer is now converted to SLD — it should NOT appear in unsupported features."""
     webmap = {
         "operationalLayers": [
             {
@@ -298,8 +298,7 @@ def test_detect_unsupported_drawing_info_renderer_on_layer():
     }
     findings = _detect_unsupported(webmap)
     match = next((f for f in findings if f["feature"] == "Renderer / symbology"), None)
-    assert match is not None
-    assert match["layer"] == "Grens Rijnland"
+    assert match is None
 
 
 def test_detect_unsupported_popupinfo_on_layer():
